@@ -60,10 +60,17 @@ class WhatsAppView extends StatefulWidget {
 
 class _WhatsAppViewState extends State<WhatsAppView> {
   late final WebViewController _controller;
-  // ValueNotifier aggiorna solo la barra di caricamento senza ricostruire
-  // il subtree del WebViewWidget, evitando che il geometry observer di
-  // webview_all_linux salti un frame di paint e nasconda l'overlay.
   final _progress = ValueNotifier<int>(0);
+
+  // Su Linux webview_all_linux traccia la visibilità del webkit overlay
+  // controllando se il geometry observer riceve paint() ad ogni frame Flutter.
+  // Usiamo addPersistentFrameCallback per segnare il boundary come dirty
+  // all'inizio di OGNI frame (handleBeginFrame), prima della fase di paint.
+  // Questo garantisce che paint() venga sempre chiamato, prevenendo sia
+  // lo schermo bianco (overlay nascosto) sia il focus steal (gtk_widget_grab_focus
+  // chiamato ogni volta che l'overlay viene re-mostrato dopo essere stato nascosto).
+  final _webviewBoundaryKey = GlobalKey();
+  bool _repaintActive = false;
 
   @override
   void initState() {
@@ -79,10 +86,21 @@ class _WhatsAppViewState extends State<WhatsAppView> {
         ),
       )
       ..loadRequest(Uri.parse(_whatsAppUrl));
+
+    if (Platform.isLinux) {
+      _repaintActive = true;
+      WidgetsBinding.instance.addPersistentFrameCallback(_onPersistentFrame);
+    }
+  }
+
+  void _onPersistentFrame(Duration _) {
+    if (!_repaintActive) return;
+    _webviewBoundaryKey.currentContext?.findRenderObject()?.markNeedsPaint();
   }
 
   @override
   void dispose() {
+    _repaintActive = false;
     _progress.dispose();
     super.dispose();
   }
@@ -92,7 +110,10 @@ class _WhatsAppViewState extends State<WhatsAppView> {
     return Scaffold(
       body: Stack(
         children: [
-          WebViewWidget(controller: _controller),
+          RepaintBoundary(
+            key: _webviewBoundaryKey,
+            child: WebViewWidget(controller: _controller),
+          ),
           ValueListenableBuilder<int>(
             valueListenable: _progress,
             builder: (context, progress, _) {
