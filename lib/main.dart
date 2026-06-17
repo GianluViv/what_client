@@ -83,6 +83,16 @@ class _WhatsAppViewState extends State<WhatsAppView> {
           onPageStarted: (_) => _progress.value = 0,
           onProgress: (p) => _progress.value = p,
           onPageFinished: (_) => _progress.value = 100,
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            // Block non-http schemes (mailto:, tel:, blob:, etc.) to prevent
+            // them from being loaded in the webview or stealing focus.
+            if (uri == null ||
+                (uri.scheme != 'https' && uri.scheme != 'http')) {
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
         ),
       )
       ..loadRequest(Uri.parse(_whatsAppUrl));

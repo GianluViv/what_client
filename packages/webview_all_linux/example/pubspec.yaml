@@ -1,0 +1,26 @@
+name: webview_all_linux_example
+description: Example app for the webview_all_linux plugin.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  webview_all:
+    path: ../../webview_all
+
+dependency_overrides:
+  webview_all_linux:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

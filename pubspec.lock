@@ -267,10 +267,9 @@ packages:
   webview_all_linux:
     dependency: "direct main"
     description:
-      name: webview_all_linux
-      sha256: "328d63ec38d4f0626fd0f7eec9ad47601cff4874b28d6ef56bbd0d663d206caf"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/webview_all_linux"
+      relative: true
+    source: path
     version: "0.5.4"
   webview_all_windows:
     dependency: "direct main"
