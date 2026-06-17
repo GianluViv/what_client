@@ -18,12 +18,15 @@ void main() async {
 
   await windowManager.ensureInitialized();
   await windowManager.waitUntilReadyToShow(
-    const WindowOptions(
+    WindowOptions(
       title: 'WhatsApp',
-      size: Size(1200, 800),
-      minimumSize: Size(800, 600),
+      size: const Size(1200, 800),
+      minimumSize: const Size(800, 600),
       center: true,
-      titleBarStyle: TitleBarStyle.normal,
+      // On Linux we draw a custom Flutter title bar so the WM one can be removed.
+      // On Windows the WM title bar is retained (no floating webview issues there).
+      titleBarStyle:
+          Platform.isLinux ? TitleBarStyle.hidden : TitleBarStyle.normal,
     ),
     () async {
       await windowManager.show();
@@ -33,6 +36,10 @@ void main() async {
 
   runApp(const WhatsAppApp());
 }
+
+// ---------------------------------------------------------------------------
+// App root
+// ---------------------------------------------------------------------------
 
 class WhatsAppApp extends StatelessWidget {
   const WhatsAppApp({super.key});
@@ -51,6 +58,10 @@ class WhatsAppApp extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Main webview screen
+// ---------------------------------------------------------------------------
+
 class WhatsAppView extends StatefulWidget {
   const WhatsAppView({super.key});
 
@@ -62,13 +73,12 @@ class _WhatsAppViewState extends State<WhatsAppView> {
   late final WebViewController _controller;
   final _progress = ValueNotifier<int>(0);
 
-  // Su Linux webview_all_linux traccia la visibilità del webkit overlay
-  // controllando se il geometry observer riceve paint() ad ogni frame Flutter.
-  // Usiamo addPersistentFrameCallback per segnare il boundary come dirty
-  // all'inizio di OGNI frame (handleBeginFrame), prima della fase di paint.
-  // Questo garantisce che paint() venga sempre chiamato, prevenendo sia
-  // lo schermo bianco (overlay nascosto) sia il focus steal (gtk_widget_grab_focus
-  // chiamato ogni volta che l'overlay viene re-mostrato dopo essere stato nascosto).
+  // On Linux, webview_all_linux hides the WebKit overlay whenever Flutter
+  // produces a frame without calling paint() on the geometry observer.
+  // We mark the RepaintBoundary dirty at the start of every frame so that
+  // paint() is always called, preventing both the white-screen (overlay
+  // hidden) and the focus-steal (overlay re-shown → gtk_widget_grab_focus)
+  // problems seen with addPostFrameCallback.
   final _webviewBoundaryKey = GlobalKey();
   bool _repaintActive = false;
 
@@ -86,7 +96,8 @@ class _WhatsAppViewState extends State<WhatsAppView> {
           onNavigationRequest: (request) {
             final uri = Uri.tryParse(request.url);
             // Block non-http schemes (mailto:, tel:, blob:, etc.) to prevent
-            // them from being loaded in the webview or stealing focus.
+            // them from loading in the webview or opening external apps that
+            // would steal window focus.
             if (uri == null ||
                 (uri.scheme != 'https' && uri.scheme != 'http')) {
               return NavigationDecision.prevent;
@@ -115,27 +126,262 @@ class _WhatsAppViewState extends State<WhatsAppView> {
     super.dispose();
   }
 
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
+      body: Column(
         children: [
-          RepaintBoundary(
-            key: _webviewBoundaryKey,
-            child: WebViewWidget(controller: _controller),
-          ),
-          ValueListenableBuilder<int>(
-            valueListenable: _progress,
-            builder: (context, progress, _) {
-              if (progress >= 100) return const SizedBox.shrink();
-              return LinearProgressIndicator(
-                value: progress == 0 ? null : progress / 100,
-                backgroundColor: Colors.transparent,
-                color: const Color(0xFF25D366),
-              );
-            },
+          // Custom title bar only on Linux (replaces WM-provided one).
+          if (Platform.isLinux)
+            AppTitleBar(
+              leading: const Padding(
+                padding: EdgeInsets.only(left: 12),
+                child: Icon(
+                  Icons.chat_bubble,
+                  color: Color(0xFF25D366),
+                  size: 16,
+                ),
+              ),
+              title: 'WhatsApp',
+              actions: [
+                TitleBarButton(
+                  icon: Icons.settings_outlined,
+                  tooltip: 'Impostazioni',
+                  onPressed: _openSettings,
+                ),
+              ],
+            ),
+          // Webview fills the rest.
+          Expanded(
+            child: Stack(
+              children: [
+                RepaintBoundary(
+                  key: _webviewBoundaryKey,
+                  child: WebViewWidget(controller: _controller),
+                ),
+                ValueListenableBuilder<int>(
+                  valueListenable: _progress,
+                  builder: (context, progress, _) {
+                    if (progress >= 100) return const SizedBox.shrink();
+                    return LinearProgressIndicator(
+                      value: progress == 0 ? null : progress / 100,
+                      backgroundColor: Colors.transparent,
+                      color: const Color(0xFF25D366),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Settings screen
+// ---------------------------------------------------------------------------
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF111B21),
+      body: Column(
+        children: [
+          if (Platform.isLinux)
+            AppTitleBar(
+              leading: TitleBarButton(
+                icon: Icons.arrow_back,
+                tooltip: 'Indietro',
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              title: 'Impostazioni',
+              actions: const [],
+            ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(24),
+              children: const [
+                _SettingsPlaceholder(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsPlaceholder extends StatelessWidget {
+  const _SettingsPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: const [
+        Text(
+          'Impostazioni',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Nessuna impostazione disponibile al momento.',
+          style: TextStyle(color: Colors.white54),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared title bar widget (used by both screens on Linux)
+// ---------------------------------------------------------------------------
+
+class AppTitleBar extends StatelessWidget {
+  final Widget? leading;
+  final String title;
+  final List<Widget> actions;
+
+  const AppTitleBar({
+    super.key,
+    this.leading,
+    required this.title,
+    required this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ColoredBox(
+        color: const Color(0xFF1F2C34),
+        child: Row(
+          children: [
+            ?leading,
+            // Draggable title area (double-tap = toggle maximize)
+            Expanded(
+              child: GestureDetector(
+                onDoubleTap: () async {
+                  if (await windowManager.isMaximized()) {
+                    windowManager.unmaximize();
+                  } else {
+                    windowManager.maximize();
+                  }
+                },
+                child: DragToMoveArea(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Per-screen action buttons
+            ...actions,
+            // Standard window controls
+            TitleBarButton(
+              icon: Icons.remove,
+              tooltip: 'Minimizza',
+              onPressed: () => windowManager.minimize(),
+            ),
+            TitleBarButton(
+              icon: Icons.crop_square,
+              tooltip: 'Massimizza / Ripristina',
+              onPressed: () async {
+                if (await windowManager.isMaximized()) {
+                  windowManager.unmaximize();
+                } else {
+                  windowManager.maximize();
+                }
+              },
+            ),
+            TitleBarButton(
+              icon: Icons.close,
+              tooltip: 'Chiudi',
+              onPressed: () => windowManager.close(),
+              isClose: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Title bar icon button with hover highlight
+// ---------------------------------------------------------------------------
+
+class TitleBarButton extends StatefulWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final bool isClose;
+
+  const TitleBarButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.isClose = false,
+  });
+
+  @override
+  State<TitleBarButton> createState() => _TitleBarButtonState();
+}
+
+class _TitleBarButtonState extends State<TitleBarButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: SizedBox(
+            width: 46,
+            height: 40,
+            child: ColoredBox(
+              color: _hovered
+                  ? (widget.isClose
+                      ? const Color(0xFFE81123)
+                      : Colors.white.withValues(alpha: 0.12))
+                  : Colors.transparent,
+              child: Center(
+                child: Icon(widget.icon, color: Colors.white70, size: 16),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

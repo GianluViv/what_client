@@ -298,16 +298,13 @@ static void update_flutter_view_input_region(WebviewAllLinuxPlugin* self) {
     cairo_region_subtract_rectangle(region, &webview_rect);
   }
 
-  // If the webview covers the entire Flutter view the subtracted region is
-  // empty.  On Wayland an empty input shape makes the surface transparent to
-  // all pointer events (clicks pass through to the window behind the app).
-  // Reset the shape to NULL instead so Wayland delivers events normally; GTK's
-  // GtkOverlay then routes them internally to the WebKit overlay child.
-  if (cairo_region_is_empty(region)) {
-    gdk_window_input_shape_combine_region(parent_window, nullptr, 0, 0);
-  } else {
-    gdk_window_input_shape_combine_region(parent_window, region, 0, 0);
-  }
+  // On Wayland, WebKit shares the main GTK Wayland surface and does not have
+  // its own Wayland subsurface.  Any restricted GDK input shape causes Wayland
+  // to drop events in the excluded area before GTK can route them to the
+  // WebKit overlay child.  Always pass nullptr to remove input-shape
+  // restrictions and rely entirely on GTK/GtkOverlay widget-level routing,
+  // which delivers events to the topmost widget at each pointer position.
+  gdk_window_input_shape_combine_region(parent_window, nullptr, 0, 0);
   cairo_region_destroy(region);
 }
 

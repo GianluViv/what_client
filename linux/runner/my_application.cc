@@ -22,6 +22,8 @@ static void my_application_activate(GApplication* application) {
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
   gtk_window_set_title(window, "WhatsApp");
+  // Remove WM title bar: Flutter draws its own custom title bar.
+  gtk_window_set_decorated(window, FALSE);
 
   gtk_window_set_default_size(window, 1280, 720);
 
