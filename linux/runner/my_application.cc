@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <unistd.h>
 #include "flutter/generated_plugin_registrant.h"
 
 struct _MyApplication {
@@ -22,8 +23,33 @@ static void my_application_activate(GApplication* application) {
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
   gtk_window_set_title(window, "WhatsApp");
-  // Remove WM title bar: Flutter draws its own custom title bar.
+  // Remove the system title bar so Flutter can draw its own.
   gtk_window_set_decorated(window, FALSE);
+  GtkWidget* empty_bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_size_request(empty_bar, -1, 0);
+  gtk_window_set_titlebar(window, empty_bar);
+
+  // Set the window icon shown in the taskbar / window switcher.
+  // The icon is bundled as a Flutter asset at:
+  //   <exec_dir>/data/flutter_assets/assets/icons/app_icon.png
+  {
+    char exe_buf[4096] = {};
+    ssize_t len = readlink("/proc/self/exe", exe_buf, sizeof(exe_buf) - 1);
+    if (len > 0) {
+      gchar* exe_dir = g_path_get_dirname(exe_buf);
+      gchar* icon_path = g_build_filename(
+          exe_dir, "data", "flutter_assets", "assets", "icons", "app_icon.png",
+          nullptr);
+      GError* err = nullptr;
+      gtk_window_set_icon_from_file(window, icon_path, &err);
+      if (err) {
+        g_warning("Could not set window icon: %s", err->message);
+        g_error_free(err);
+      }
+      g_free(icon_path);
+      g_free(exe_dir);
+    }
+  }
 
   gtk_window_set_default_size(window, 1280, 720);
 
