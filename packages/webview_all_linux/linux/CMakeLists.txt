@@ -8,6 +8,7 @@ set(PLUGIN_NAME "${PROJECT_NAME}_plugin")
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WEBKIT REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
+pkg_check_modules(NOTIFY REQUIRED IMPORTED_TARGET libnotify)
 
 add_library(${PLUGIN_NAME} SHARED
   "webview_all_linux_plugin.cc"
@@ -24,3 +25,4 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::WEBKIT)
+target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::NOTIFY)

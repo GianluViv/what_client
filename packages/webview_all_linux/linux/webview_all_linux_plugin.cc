@@ -4,6 +4,8 @@
 #include <gtk/gtk.h>
 #include <libsoup/soup.h>
 #include <webkit2/webkit2.h>
+#include <libnotify/notify.h>
+#include <unistd.h>
 
 #include <cstring>
 
@@ -663,9 +665,62 @@ static gboolean authenticate_cb(WebKitWebView* widget,
   return TRUE;
 }
 
+// ── Notification support ──────────────────────────────────────────────────────
+
+// Cached pixbuf for the app icon, loaded once on first notification.
+static GdkPixbuf* app_icon_pixbuf = nullptr;
+
+static GdkPixbuf* get_app_icon_pixbuf() {
+  if (app_icon_pixbuf) return app_icon_pixbuf;
+
+  char exe_buf[4096] = {};
+  ssize_t len = readlink("/proc/self/exe", exe_buf, sizeof(exe_buf) - 1);
+  if (len > 0) {
+    gchar* exe_dir   = g_path_get_dirname(exe_buf);
+    gchar* icon_path = g_build_filename(
+        exe_dir, "data", "flutter_assets", "assets", "icons",
+        "hicolor", "256x256", "apps", "tray_icon.png", nullptr);
+    app_icon_pixbuf = gdk_pixbuf_new_from_file_at_size(icon_path, 64, 64, nullptr);
+    g_free(icon_path);
+    g_free(exe_dir);
+  }
+  return app_icon_pixbuf;
+}
+
+static gboolean show_notification_cb(WebKitWebView* /*widget*/,
+                                      WebKitNotification* notification,
+                                      gpointer /*user_data*/) {
+  if (!notify_is_initted()) notify_init("WhatsApp");
+
+  const gchar* title = webkit_notification_get_title(notification);
+  const gchar* body  = webkit_notification_get_body(notification);
+
+  NotifyNotification* n = notify_notification_new(title, body, nullptr);
+  notify_notification_set_timeout(n, NOTIFY_EXPIRES_DEFAULT);
+
+  GdkPixbuf* pb = get_app_icon_pixbuf();
+  if (pb) notify_notification_set_image_from_pixbuf(n, pb);
+
+  GError* err = nullptr;
+  notify_notification_show(n, &err);
+  if (err) g_error_free(err);
+  g_object_unref(n);
+
+  // Return TRUE = WebKit does not open its own notification UI.
+  return TRUE;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 static gboolean permission_request_cb(WebKitWebView* widget,
                                       WebKitPermissionRequest* request,
                                       gpointer user_data) {
+  // Notification permission: grant silently so WhatsApp Web can show alerts.
+  if (WEBKIT_IS_NOTIFICATION_PERMISSION_REQUEST(request)) {
+    webkit_permission_request_allow(request);
+    return TRUE;
+  }
+
   LinuxWebView* webview = static_cast<LinuxWebView*>(user_data);
   if (!webview->event_listening) {
     return FALSE;
@@ -1522,6 +1577,8 @@ static LinuxWebView* create_linux_webview(WebviewAllLinuxPlugin* self) {
                    G_CALLBACK(authenticate_cb), webview);
   g_signal_connect(webview->web_view, "permission-request",
                    G_CALLBACK(permission_request_cb), webview);
+  g_signal_connect(webview->web_view, "show-notification",
+                   G_CALLBACK(show_notification_cb), webview);
   g_signal_connect(webview->web_view, "script-dialog",
                    G_CALLBACK(script_dialog_cb), webview);
   g_signal_connect(webview->web_view, "load-failed-with-tls-errors",

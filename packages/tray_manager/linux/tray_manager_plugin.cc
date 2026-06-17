@@ -2,6 +2,7 @@
 
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
+#include <gio/gio.h>
 #include <sys/utsname.h>
 
 #ifdef HAVE_AYATANA
@@ -29,6 +30,49 @@ struct _TrayManagerPlugin {
 };
 
 G_DEFINE_TYPE(TrayManagerPlugin, tray_manager_plugin, g_object_get_type())
+
+// D-Bus session bus connection used to intercept SNI Activate (left-click).
+static GDBusConnection* sni_dbus_conn = nullptr;
+
+// Filter that runs before AppIndicator sees incoming D-Bus messages.
+// When the SNI host calls Activate (primary / left click) we notify Flutter
+// and consume the message so AppIndicator does NOT show the context menu.
+// ContextMenu (right click) passes through unchanged → AppIndicator shows menu.
+static GDBusMessage* sni_dbus_filter(GDBusConnection* conn,
+                                      GDBusMessage* message,
+                                      gboolean incoming,
+                                      gpointer /*user_data*/) {
+  if (!incoming) return message;
+  if (g_dbus_message_get_message_type(message) != G_DBUS_MESSAGE_TYPE_METHOD_CALL)
+    return message;
+
+  const gchar* iface = g_dbus_message_get_interface(message);
+  if (g_strcmp0(iface, "org.kde.StatusNotifierItem") != 0) return message;
+
+  const gchar* member = g_dbus_message_get_member(message);
+  if (g_strcmp0(member, "Activate") == 0) {
+    // Forward left-click event to Flutter.
+    fl_method_channel_invoke_method(plugin_instance->channel,
+                                    "onTrayIconMouseDown",
+                                    fl_value_new_null(),
+                                    nullptr, nullptr, nullptr);
+
+    // Reply to the caller so it doesn't receive a timeout error.
+    GDBusMessage* reply = g_dbus_message_new_method_reply(message);
+    GError* err = nullptr;
+    g_dbus_connection_send_message(conn, reply,
+                                   G_DBUS_SEND_MESSAGE_FLAGS_NONE,
+                                   nullptr, &err);
+    if (err) g_error_free(err);
+    g_object_unref(reply);
+
+    // Consume: AppIndicator never sees this Activate call → no menu popup.
+    g_object_unref(message);
+    return nullptr;
+  }
+
+  return message;
+}
 
 // Gets the window being controlled.
 GtkWindow* get_window(TrayManagerPlugin* self) {
@@ -135,6 +179,16 @@ static FlMethodResponse* set_icon(TrayManagerPlugin* self, FlValue* args) {
 
     app_indicator_set_menu(indicator, GTK_MENU(menu));
     gtk_widget_show_all(menu);
+
+    // Install a D-Bus filter to intercept SNI Activate (left-click) before
+    // AppIndicator converts it into "show context menu".
+    if (!sni_dbus_conn) {
+      sni_dbus_conn = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
+      if (sni_dbus_conn) {
+        g_dbus_connection_add_filter(sni_dbus_conn, sni_dbus_filter,
+                                     nullptr, nullptr);
+      }
+    }
   }
 
   app_indicator_set_icon_theme_path(indicator, icon_dir);

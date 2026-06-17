@@ -23,15 +23,11 @@ static void my_application_activate(GApplication* application) {
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
   gtk_window_set_title(window, "WhatsApp");
-  // Remove the system title bar so Flutter can draw its own.
-  gtk_window_set_decorated(window, FALSE);
-  GtkWidget* empty_bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  gtk_widget_set_size_request(empty_bar, -1, 0);
-  gtk_window_set_titlebar(window, empty_bar);
 
-  // Set the window icon shown in the taskbar / window switcher.
-  // The icon is bundled as a Flutter asset at:
-  //   <exec_dir>/data/flutter_assets/assets/icons/app_icon.png
+  // Resolve the bundle directory and set the window icon.
+  // On Wayland+GNOME the dock icon comes from the .desktop file (not the GTK
+  // window icon), so we also write / refresh the .desktop file at every launch
+  // so that the correct icon is always shown in the taskbar.
   {
     char exe_buf[4096] = {};
     ssize_t len = readlink("/proc/self/exe", exe_buf, sizeof(exe_buf) - 1);
@@ -40,12 +36,39 @@ static void my_application_activate(GApplication* application) {
       gchar* icon_path = g_build_filename(
           exe_dir, "data", "flutter_assets", "assets", "icons", "app_icon.png",
           nullptr);
+
+      // GTK window icon (used in Alt-Tab switcher, window decorations, X11 taskbar).
       GError* err = nullptr;
       gtk_window_set_icon_from_file(window, icon_path, &err);
-      if (err) {
-        g_warning("Could not set window icon: %s", err->message);
-        g_error_free(err);
-      }
+      if (err) { g_error_free(err); err = nullptr; }
+
+      // .desktop file for GNOME Shell dock / Wayland taskbars.
+      // Written to ~/.local/share/applications/ so the desktop environment can
+      // match the running window (via StartupWMClass) and display our icon.
+      gchar* apps_dir = g_build_filename(
+          g_get_home_dir(), ".local", "share", "applications", nullptr);
+      g_mkdir_with_parents(apps_dir, 0755);
+
+      gchar* desktop_path = g_build_filename(
+          apps_dir, "com.teststudio.what_client.desktop", nullptr);
+
+      gchar* desktop_content = g_strdup_printf(
+          "[Desktop Entry]\n"
+          "Version=1.0\n"
+          "Type=Application\n"
+          "Name=WhatsApp\n"
+          "Exec=%s\n"
+          "Icon=%s\n"
+          "Categories=Network;InstantMessaging;\n"
+          "StartupWMClass=what_client\n"
+          "NoDisplay=true\n",
+          exe_buf, icon_path);
+
+      g_file_set_contents(desktop_path, desktop_content, -1, nullptr);
+
+      g_free(desktop_content);
+      g_free(desktop_path);
+      g_free(apps_dir);
       g_free(icon_path);
       g_free(exe_dir);
     }
