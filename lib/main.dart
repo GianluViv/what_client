@@ -13,6 +13,77 @@ const _userAgent =
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 const _keyMinimizeToTray = 'minimize_to_tray';
+const _keyThemeMode = 'theme_mode';
+const _keySeedColor = 'seed_color';
+const _keyChatListWidth = 'chat_list_width';
+
+const _defaultSeed = Color(0xFF25D366); // WhatsApp green
+
+// Chat-list pane width override (px). Slider bounds; the initial position is
+// WhatsApp's own default, measured from the live page when Settings opens.
+const _minChatListWidth = 280.0;
+const _maxChatListWidth = 600.0;
+const _fallbackChatListWidth = 400.0; // used only if measuring the default fails
+
+// Accent colors offered in Settings.
+const _seedColorChoices = <Color>[
+  Color(0xFF25D366), // WhatsApp green
+  Color(0xFF128C7E), // teal
+  Color(0xFF1DA1F2), // blue
+  Color(0xFF7E57C2), // purple
+  Color(0xFFFB8C00), // orange
+  Color(0xFFE53935), // red
+];
+
+// ---------------------------------------------------------------------------
+// Theme controller (theme mode + accent color, persisted)
+// ---------------------------------------------------------------------------
+
+class ThemeController extends ChangeNotifier {
+  ThemeController(this._mode, this._seedColor, this._chatListWidth);
+
+  ThemeMode _mode;
+  Color _seedColor;
+  double? _chatListWidth; // null = use WhatsApp's default (no override)
+
+  ThemeMode get mode => _mode;
+  Color get seedColor => _seedColor;
+  double? get chatListWidth => _chatListWidth;
+
+  Future<void> setMode(ThemeMode mode) async {
+    if (mode == _mode) return;
+    _mode = mode;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyThemeMode, mode.name);
+  }
+
+  Future<void> setSeedColor(Color color) async {
+    if (color.toARGB32() == _seedColor.toARGB32()) return;
+    _seedColor = color;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keySeedColor, color.toARGB32());
+  }
+
+  // Pass null to clear the override and fall back to WhatsApp's default width.
+  Future<void> setChatListWidth(double? width) async {
+    if (width == _chatListWidth) return;
+    _chatListWidth = width;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (width == null) {
+      await prefs.remove(_keyChatListWidth);
+    } else {
+      await prefs.setDouble(_keyChatListWidth, width);
+    }
+  }
+
+  static ThemeMode parseMode(String? name) => ThemeMode.values.firstWhere(
+        (m) => m.name == name,
+        orElse: () => ThemeMode.system,
+      );
+}
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -28,6 +99,11 @@ void main() async {
 
   final prefs = await SharedPreferences.getInstance();
   final minimizeToTray = prefs.getBool(_keyMinimizeToTray) ?? false;
+  final themeController = ThemeController(
+    ThemeController.parseMode(prefs.getString(_keyThemeMode)),
+    Color(prefs.getInt(_keySeedColor) ?? _defaultSeed.toARGB32()),
+    prefs.getDouble(_keyChatListWidth),
+  );
 
   await windowManager.waitUntilReadyToShow(
     WindowOptions(
@@ -35,8 +111,7 @@ void main() async {
       size: const Size(1200, 800),
       minimumSize: const Size(800, 600),
       center: true,
-      titleBarStyle:
-          Platform.isLinux ? TitleBarStyle.hidden : TitleBarStyle.normal,
+      titleBarStyle: TitleBarStyle.normal,
     ),
     () async {
       // Prevent default close; onWindowClose() decides what to do.
@@ -46,7 +121,10 @@ void main() async {
     },
   );
 
-  runApp(WhatsAppApp(initialMinimizeToTray: minimizeToTray));
+  runApp(WhatsAppApp(
+    initialMinimizeToTray: minimizeToTray,
+    themeController: themeController,
+  ));
 }
 
 // ---------------------------------------------------------------------------
@@ -55,23 +133,45 @@ void main() async {
 
 class WhatsAppApp extends StatelessWidget {
   final bool initialMinimizeToTray;
+  final ThemeController themeController;
 
   // Navigator key so TrayListener can pop routes when restoring from tray.
   static final navigatorKey = GlobalKey<NavigatorState>();
 
-  const WhatsAppApp({super.key, required this.initialMinimizeToTray});
+  const WhatsAppApp({
+    super.key,
+    required this.initialMinimizeToTray,
+    required this.themeController,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'WhatsApp',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF25D366)),
-        useMaterial3: true,
-      ),
-      home: WhatsAppView(initialMinimizeToTray: initialMinimizeToTray),
+    return ListenableBuilder(
+      listenable: themeController,
+      builder: (context, _) {
+        final seed = themeController.seedColor;
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          title: 'WhatsApp',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: seed),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: seed,
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+          ),
+          themeMode: themeController.mode,
+          home: WhatsAppView(
+            initialMinimizeToTray: initialMinimizeToTray,
+            themeController: themeController,
+          ),
+        );
+      },
     );
   }
 }
@@ -82,8 +182,13 @@ class WhatsAppApp extends StatelessWidget {
 
 class WhatsAppView extends StatefulWidget {
   final bool initialMinimizeToTray;
+  final ThemeController themeController;
 
-  const WhatsAppView({super.key, required this.initialMinimizeToTray});
+  const WhatsAppView({
+    super.key,
+    required this.initialMinimizeToTray,
+    required this.themeController,
+  });
 
   @override
   State<WhatsAppView> createState() => _WhatsAppViewState();
@@ -107,7 +212,12 @@ class _WhatsAppViewState extends State<WhatsAppView>
     _minimizeToTray = widget.initialMinimizeToTray;
 
     windowManager.addListener(this);
-    if (_minimizeToTray) _setupTray();
+    // Both platforms use the native title bar, so Settings is only reachable
+    // from the tray. The tray icon is therefore always shown.
+    _setupTray();
+
+    // Re-apply the chat-list width override whenever appearance settings change.
+    widget.themeController.addListener(_applyChatListWidth);
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -116,7 +226,11 @@ class _WhatsAppViewState extends State<WhatsAppView>
         NavigationDelegate(
           onPageStarted: (_) => _progress.value = 0,
           onProgress: (p) => _progress.value = p,
-          onPageFinished: (_) => _progress.value = 100,
+          onPageFinished: (_) {
+            _progress.value = 100;
+            // The page reload wipes injected styles, so re-apply on each load.
+            _applyChatListWidth();
+          },
           onNavigationRequest: (request) {
             final uri = Uri.tryParse(request.url);
             if (uri == null ||
@@ -138,6 +252,7 @@ class _WhatsAppViewState extends State<WhatsAppView>
   @override
   void dispose() {
     _repaintActive = false;
+    widget.themeController.removeListener(_applyChatListWidth);
     windowManager.removeListener(this);
     if (_trayReady) trayManager.removeListener(this);
     _progress.dispose();
@@ -164,15 +279,38 @@ class _WhatsAppViewState extends State<WhatsAppView>
 
   // ── tray listener ─────────────────────────────────────────────────────────
 
+  // Left click toggles the window. (On Windows this fires on button-up; on
+  // Linux app_indicator shows the menu instead and never emits this event.)
   @override
-  void onTrayIconMouseDown() => _restoreWindow();
+  void onTrayIconMouseDown() => _toggleWindow();
+
+  // Right click opens the context menu. On Windows the menu is not shown
+  // automatically, so it must be popped up explicitly; on Linux app_indicator
+  // already shows it on click, so this event never fires there.
+  @override
+  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
-    if (menuItem.key == 'show') {
+    switch (menuItem.key) {
+      case 'show':
+        _restoreWindow();
+        break;
+      case 'settings':
+        _restoreWindow();
+        _openSettings();
+        break;
+      case 'quit':
+        windowManager.destroy();
+        break;
+    }
+  }
+
+  Future<void> _toggleWindow() async {
+    if (await windowManager.isVisible()) {
+      await windowManager.hide();
+    } else {
       _restoreWindow();
-    } else if (menuItem.key == 'quit') {
-      windowManager.destroy();
     }
   }
 
@@ -189,11 +327,19 @@ class _WhatsAppViewState extends State<WhatsAppView>
   Future<void> _setupTray() async {
     if (_trayReady) return;
     try {
-      await trayManager.setIcon('assets/icons/tray_icon.png');
+      // Windows loads the tray icon via LoadImage(IMAGE_ICON), which needs a
+      // real .ico; Linux (WebKitGTK/AppIndicator) uses the PNG.
+      await trayManager.setIcon(
+        Platform.isWindows
+            ? 'assets/icons/tray_icon.ico'
+            : 'assets/icons/tray_icon.png',
+      );
+      if (Platform.isWindows) await trayManager.setToolTip('WhatsApp');
       await trayManager.setContextMenu(Menu(items: [
-        MenuItem(key: 'show', label: 'Apri WhatsApp'),
+        MenuItem(key: 'show', label: 'Ripristina'),
+        MenuItem(key: 'settings', label: 'Impostazioni'),
         MenuItem.separator(),
-        MenuItem(key: 'quit', label: 'Esci'),
+        MenuItem(key: 'quit', label: 'Chiudi'),
       ]));
       trayManager.addListener(this);
       _trayReady = true;
@@ -202,31 +348,112 @@ class _WhatsAppViewState extends State<WhatsAppView>
     }
   }
 
-  Future<void> _teardownTray() async {
-    if (!_trayReady) return;
-    try {
-      trayManager.removeListener(this);
-      await trayManager.destroy();
-      _trayReady = false;
-    } catch (e) {
-      debugPrint('Tray teardown failed: $e');
-    }
-  }
-
   // ── settings ──────────────────────────────────────────────────────────────
 
   Future<void> _onMinimizeToTrayChanged(bool value) async {
+    // The tray is always present; this setting only changes whether closing
+    // the window hides it to the tray or quits the app.
     setState(() => _minimizeToTray = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyMinimizeToTray, value);
-    if (value) {
-      await _setupTray();
-    } else {
-      await _teardownTray();
+  }
+
+  // ── chat-list width injection ───────────────────────────────────────────────
+
+  // Injects (or removes) a persistent stylesheet pinning the WhatsApp chat-list
+  // pane (#side) to the chosen width. A stylesheet rule with !important survives
+  // WhatsApp's React re-renders, unlike inline element styles.
+  Future<void> _applyChatListWidth() async {
+    final width = widget.themeController.chatListWidth;
+    final wExpr = width == null ? 'null' : width.round().toString();
+    // Two things, both robust to WhatsApp's hashed class names:
+    //  1. Width: pin the chat-list COLUMN wrapper (the element whose direct
+    //     child is #side, a stable id) via :has(); the conversation is flex:1
+    //     and fills the rest. A persistent stylesheet survives React re-renders.
+    //  2. Separator line: WhatsApp keeps a second "ghost" column anchored at the
+    //     original 40%, whose conversation draws a faint border-left
+    //     (rgba(0,0,0,0.1)) — a stray grey line. We blank that border on tall
+    //     panes (matched by appearance, not class) and re-apply via a
+    //     MutationObserver; clearing the width restores the original borders.
+    final js = '''
+(function(){
+  window.__waWidth = $wExpr;
+  var id='wa-custom-layout', e=document.getElementById(id);
+  if(window.__waWidth==null){ if(e) e.remove(); }
+  else {
+    if(!e){e=document.createElement('style');e.id=id;document.head.appendChild(e);}
+    var w=window.__waWidth;
+    e.textContent='div:has(> #side){flex:0 0 '+w+'px!important;width:'+w+'px!important;min-width:'+w+'px!important;max-width:'+w+'px!important;}';
+  }
+  function alpha(col){var o=col.indexOf('(');var p=col.indexOf(')');if(o<0||p<0)return 1;var a=col.substring(o+1,p).split(',');return a.length>=4?parseFloat(a[3]):1;}
+  function fix(){
+    var W=window.__waWidth;
+    var side=document.getElementById('side');
+    if(!side) return;
+    var root=side.closest?side.closest('[class~="two"]'):null; root=root||document.body;
+    if(W==null){
+      var mod=root.querySelectorAll('[data-wa-sep]');
+      for(var k=0;k<mod.length;k++){var m=mod[k];m.style.removeProperty('border-left-color');m.style.removeProperty('border-left-width');m.style.removeProperty('border-left-style');m.removeAttribute('data-wa-sep');}
+      return;
+    }
+    // The real conversation pane = first tall sibling after the #side column.
+    var wrapper=side.parentElement;
+    var conv=wrapper?wrapper.nextElementSibling:null;
+    while(conv && conv.getBoundingClientRect().height<400) conv=conv.nextElementSibling;
+    // Blank every stray faint vertical separator (full-height panes), capturing
+    // WhatsApp's own border colour so we can reuse it (stays theme-correct).
+    var nodes=root.querySelectorAll('div');
+    for(var i=0;i<nodes.length;i++){var n=nodes[i];
+      if(n===conv || n.getAttribute('data-wa-sep')) continue;
+      var c=getComputedStyle(n);var a=alpha(c.borderLeftColor);var bw=parseFloat(c.borderLeftWidth);
+      if(c.borderLeftStyle!=='none' && bw>=1 && bw<=2 && a>0 && a<=0.4 && n.getBoundingClientRect().height>400){
+        window.__waSepColor=c.borderLeftColor;
+        n.style.setProperty('border-left-color','transparent','important');
+        n.setAttribute('data-wa-sep','hidden');
+      }
+    }
+    // Redraw the separator exactly on the new list/conversation boundary.
+    if(conv){
+      var col=window.__waSepColor||'rgba(0, 0, 0, 0.1)';
+      conv.style.setProperty('border-left-width','1px','important');
+      conv.style.setProperty('border-left-style','solid','important');
+      conv.style.setProperty('border-left-color',col,'important');
+      conv.setAttribute('data-wa-sep','draw');
+    }
+  }
+  window.__waFix=fix; fix();
+  if(!window.__waObs){
+    window.__waObs=new MutationObserver(function(){ if(window.__waT)return; window.__waT=setTimeout(function(){window.__waT=null;window.__waFix();},400); });
+    window.__waObs.observe(document.body,{childList:true,subtree:true});
+  }
+})();
+''';
+    try {
+      await _controller.runJavaScript(js);
+    } catch (_) {
+      // Webview not ready yet; onPageFinished will re-apply.
     }
   }
 
-  void _openSettings() {
+  // Reads WhatsApp's current chat-list width from the DOM, used as the slider's
+  // starting point. Returns null if #side is absent (e.g. logged out).
+  Future<double?> _measureChatListWidth() async {
+    try {
+      final r = await _controller.runJavaScriptReturningResult(
+        "(function(){var s=document.querySelector('#side');"
+        "return s?Math.round(s.getBoundingClientRect().width):0;})()",
+      );
+      final v = double.tryParse(r.toString());
+      return (v != null && v > 0) ? v : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openSettings() async {
+    // Measure WhatsApp's current pane width so the slider can start there.
+    final defaultWidth = await _measureChatListWidth() ?? _fallbackChatListWidth;
+    if (!mounted) return;
     // PageRouteBuilder with zero duration: the webview route is immediately
     // occluded, so paint() is not called → webview_all_linux hides WebKit →
     // the settings screen renders in full without the overlay on top.
@@ -235,6 +462,8 @@ class _WhatsAppViewState extends State<WhatsAppView>
       pageBuilder: (_, _, _) => SettingsScreen(
         minimizeToTray: _minimizeToTray,
         onMinimizeToTrayChanged: _onMinimizeToTrayChanged,
+        themeController: widget.themeController,
+        defaultChatListWidth: defaultWidth,
       ),
       transitionDuration: Duration.zero,
       reverseTransitionDuration: Duration.zero,
@@ -246,43 +475,22 @@ class _WhatsAppViewState extends State<WhatsAppView>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          if (Platform.isLinux)
-            AppTitleBar(
-              leading: const Padding(
-                padding: EdgeInsets.only(left: 10),
-                child: Icon(Icons.chat_bubble, color: Color(0xFF25D366), size: 14),
-              ),
-              title: 'WhatsApp',
-              actions: [
-                TitleBarButton(
-                  icon: Icons.settings_outlined,
-                  tooltip: 'Impostazioni',
-                  onPressed: _openSettings,
-                ),
-              ],
-            ),
-          Expanded(
-            child: Stack(
-              children: [
-                RepaintBoundary(
-                  key: _webviewBoundaryKey,
-                  child: WebViewWidget(controller: _controller),
-                ),
-                ValueListenableBuilder<int>(
-                  valueListenable: _progress,
-                  builder: (context, progress, _) {
-                    if (progress >= 100) return const SizedBox.shrink();
-                    return LinearProgressIndicator(
-                      value: progress == 0 ? null : progress / 100,
-                      backgroundColor: Colors.transparent,
-                      color: const Color(0xFF25D366),
-                    );
-                  },
-                ),
-              ],
-            ),
+          RepaintBoundary(
+            key: _webviewBoundaryKey,
+            child: WebViewWidget(controller: _controller),
+          ),
+          ValueListenableBuilder<int>(
+            valueListenable: _progress,
+            builder: (context, progress, _) {
+              if (progress >= 100) return const SizedBox.shrink();
+              return LinearProgressIndicator(
+                value: progress == 0 ? null : progress / 100,
+                backgroundColor: Colors.transparent,
+                color: Theme.of(context).colorScheme.primary,
+              );
+            },
           ),
         ],
       ),
@@ -297,11 +505,17 @@ class _WhatsAppViewState extends State<WhatsAppView>
 class SettingsScreen extends StatefulWidget {
   final bool minimizeToTray;
   final ValueChanged<bool> onMinimizeToTrayChanged;
+  final ThemeController themeController;
+  // WhatsApp's current pane width, used as the slider's start when there is no
+  // override yet.
+  final double defaultChatListWidth;
 
   const SettingsScreen({
     super.key,
     required this.minimizeToTray,
     required this.onMinimizeToTrayChanged,
+    required this.themeController,
+    required this.defaultChatListWidth,
   });
 
   @override
@@ -310,49 +524,159 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late bool _minimizeToTray;
+  // Local copy for smooth dragging; committed to the controller on release.
+  late double? _chatListWidth;
 
   @override
   void initState() {
     super.initState();
     _minimizeToTray = widget.minimizeToTray;
+    _chatListWidth = widget.themeController.chatListWidth;
   }
 
   @override
   Widget build(BuildContext context) {
+    final controller = widget.themeController;
     return Scaffold(
-      backgroundColor: const Color(0xFF111B21),
-      body: Column(
+      // Standard AppBar; its automatic leading button returns to the webview.
+      appBar: AppBar(title: const Text('Impostazioni')),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          if (Platform.isLinux)
-            AppTitleBar(
-              leading: TitleBarButton(
-                icon: Icons.arrow_back,
-                tooltip: 'Indietro',
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-              title: 'Impostazioni',
-              actions: const [],
+          const _SectionHeader('Comportamento'),
+          _SettingsTile(
+            icon: Icons.logout,
+            title: 'Riduci nel system tray alla chiusura',
+            subtitle:
+                'La pressione di × nasconde la finestra nel tray invece di uscire.',
+            trailing: Switch.adaptive(
+              value: _minimizeToTray,
+              onChanged: (v) {
+                setState(() => _minimizeToTray = v);
+                widget.onMinimizeToTrayChanged(v);
+              },
             ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          ),
+          const _SectionHeader('Aspetto'),
+          // Rebuilds when the user changes theme mode / accent color.
+          ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => Column(
               children: [
-                _SectionHeader('Comportamento'),
-                _SettingsTile(
-                  icon: Icons.logout,
-                  title: 'Riduci nel system tray alla chiusura',
-                  subtitle:
-                      'La pressione di × nasconde la finestra nel tray invece di uscire.',
-                  trailing: Switch.adaptive(
-                    value: _minimizeToTray,
-                    activeTrackColor: const Color(0xFF25D366),
-                    onChanged: (v) {
-                      setState(() => _minimizeToTray = v);
-                      widget.onMinimizeToTrayChanged(v);
-                    },
+                _SettingsCard(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _CardTitle(icon: Icons.brightness_6_outlined, title: 'Tema'),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<ThemeMode>(
+                            segments: const [
+                              ButtonSegment(
+                                value: ThemeMode.system,
+                                icon: Icon(Icons.brightness_auto),
+                                label: Text('Sistema'),
+                              ),
+                              ButtonSegment(
+                                value: ThemeMode.light,
+                                icon: Icon(Icons.light_mode_outlined),
+                                label: Text('Chiaro'),
+                              ),
+                              ButtonSegment(
+                                value: ThemeMode.dark,
+                                icon: Icon(Icons.dark_mode_outlined),
+                                label: Text('Scuro'),
+                              ),
+                            ],
+                            selected: {controller.mode},
+                            onSelectionChanged: (s) => controller.setMode(s.first),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                _SettingsCard(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _CardTitle(
+                          icon: Icons.palette_outlined,
+                          title: 'Colore principale',
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 14,
+                          runSpacing: 14,
+                          children: [
+                            for (final color in _seedColorChoices)
+                              _ColorDot(
+                                color: color,
+                                selected: controller.seedColor.toARGB32() ==
+                                    color.toARGB32(),
+                                onTap: () => controller.setSeedColor(color),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
+            ),
+          ),
+          const _SectionHeader('Layout'),
+          _SettingsCard(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const _CardTitle(
+                        icon: Icons.view_column_outlined,
+                        title: 'Larghezza lista chat',
+                      ),
+                      const Spacer(),
+                      Text(
+                        _chatListWidth == null
+                            ? 'Default'
+                            : '${_chatListWidth!.round()} px',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    min: _minChatListWidth,
+                    max: _maxChatListWidth,
+                    value: (_chatListWidth ?? widget.defaultChatListWidth)
+                        .clamp(_minChatListWidth, _maxChatListWidth)
+                        .toDouble(),
+                    onChanged: (v) => setState(() => _chatListWidth = v),
+                    onChangeEnd: (v) => controller.setChatListWidth(v),
+                  ),
+                  if (_chatListWidth != null)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () {
+                          setState(() => _chatListWidth = null);
+                          controller.setChatListWidth(null);
+                        },
+                        child: const Text('Reimposta al default WhatsApp'),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -371,12 +695,85 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
-          color: Color(0xFF25D366),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.8,
         ),
+      ),
+    );
+  }
+}
+
+// Rounded surface used as the container for each settings entry.
+class _SettingsCard extends StatelessWidget {
+  final Widget child;
+  const _SettingsCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: child,
+    );
+  }
+}
+
+// Leading icon + title used at the top of the appearance cards.
+class _CardTitle extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  const _CardTitle({required this.icon, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, color: scheme.onSurfaceVariant, size: 22),
+        const SizedBox(width: 16),
+        Text(title,
+            style: TextStyle(color: scheme.onSurface, fontSize: 14)),
+      ],
+    );
+  }
+}
+
+class _ColorDot extends StatelessWidget {
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ColorDot({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected
+                ? Theme.of(context).colorScheme.onSurface
+                : Colors.transparent,
+            width: 3,
+          ),
+        ),
+        child:
+            selected ? const Icon(Icons.check, color: Colors.white, size: 18) : null,
       ),
     );
   }
@@ -397,156 +794,16 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1F2C34),
-        borderRadius: BorderRadius.circular(10),
-      ),
+    final scheme = Theme.of(context).colorScheme;
+    return _SettingsCard(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Icon(icon, color: Colors.white54, size: 22),
+        leading: Icon(icon, color: scheme.onSurfaceVariant, size: 22),
         title: Text(title,
-            style: const TextStyle(color: Colors.white, fontSize: 14)),
+            style: TextStyle(color: scheme.onSurface, fontSize: 14)),
         subtitle: Text(subtitle,
-            style: const TextStyle(color: Colors.white54, fontSize: 12)),
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
         trailing: trailing,
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Shared title bar widget
-// ---------------------------------------------------------------------------
-
-class AppTitleBar extends StatelessWidget {
-  final Widget? leading;
-  final String title;
-  final List<Widget> actions;
-
-  const AppTitleBar({
-    super.key,
-    this.leading,
-    required this.title,
-    required this.actions,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 32,
-      child: ColoredBox(
-        color: const Color(0xFF1F2C34),
-        child: Row(
-          children: [
-            ?leading,
-            Expanded(
-              child: GestureDetector(
-                onDoubleTap: () async {
-                  if (await windowManager.isMaximized()) {
-                    windowManager.unmaximize();
-                  } else {
-                    windowManager.maximize();
-                  }
-                },
-                child: DragToMoveArea(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            ...actions,
-            TitleBarButton(
-              icon: Icons.remove,
-              tooltip: 'Minimizza',
-              onPressed: () => windowManager.minimize(),
-            ),
-            TitleBarButton(
-              icon: Icons.crop_square,
-              tooltip: 'Massimizza / Ripristina',
-              onPressed: () async {
-                if (await windowManager.isMaximized()) {
-                  windowManager.unmaximize();
-                } else {
-                  windowManager.maximize();
-                }
-              },
-            ),
-            TitleBarButton(
-              icon: Icons.close,
-              tooltip: 'Chiudi',
-              onPressed: () => windowManager.close(),
-              isClose: true,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Title bar icon button with hover highlight
-// ---------------------------------------------------------------------------
-
-class TitleBarButton extends StatefulWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-  final bool isClose;
-
-  const TitleBarButton({
-    super.key,
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-    this.isClose = false,
-  });
-
-  @override
-  State<TitleBarButton> createState() => _TitleBarButtonState();
-}
-
-class _TitleBarButtonState extends State<TitleBarButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: widget.tooltip,
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          onTap: widget.onPressed,
-          child: SizedBox(
-            width: 40,
-            height: 32,
-            child: ColoredBox(
-              color: _hovered
-                  ? (widget.isClose
-                      ? const Color(0xFFE81123)
-                      : Colors.white.withValues(alpha: 0.12))
-                  : Colors.transparent,
-              child: Center(
-                child: Icon(widget.icon, color: Colors.white70, size: 16),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

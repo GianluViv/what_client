@@ -1014,7 +1014,7 @@ class LinuxNavigationDelegate extends PlatformNavigationDelegate {
 
 class LinuxPlatformWebViewPermissionRequest
     extends PlatformWebViewPermissionRequest {
-  LinuxPlatformWebViewPermissionRequest({
+  const LinuxPlatformWebViewPermissionRequest({
     required super.types,
     required Future<void> Function() onGrant,
     required Future<void> Function() onDeny,
@@ -1033,12 +1033,12 @@ class LinuxPlatformWebViewPermissionRequest
 
 class LinuxPlatformSslAuthError extends PlatformSslAuthError {
   LinuxPlatformSslAuthError({
-    required String description,
+    required super.description,
     required Future<void> Function() onProceed,
     required Future<void> Function() onCancel,
   }) : _onProceed = onProceed,
        _onCancel = onCancel,
-       super(certificate: const X509Certificate(), description: description);
+       super(certificate: const X509Certificate());
 
   final Future<void> Function() _onProceed;
   final Future<void> Function() _onCancel;
@@ -1051,7 +1051,7 @@ class LinuxPlatformSslAuthError extends PlatformSslAuthError {
 }
 
 class LinuxWebResourceError extends WebResourceError {
-  LinuxWebResourceError({
+  const LinuxWebResourceError({
     required super.errorCode,
     required super.description,
     required super.errorType,
