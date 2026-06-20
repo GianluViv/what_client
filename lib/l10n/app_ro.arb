@@ -1,0 +1,23 @@
+{
+  "@@locale": "ro",
+  "appTitle": "WhatsApp",
+  "settingsTitle": "Setări",
+  "sectionBehavior": "Comportament",
+  "minimizeToTrayTitle": "Minimizează în bara de sistem la închidere",
+  "minimizeToTraySubtitle": "Apăsarea × ascunde fereastra în bara de sistem în loc să închidă aplicația.",
+  "sectionAppearance": "Aspect",
+  "themeTitle": "Temă",
+  "themeSystem": "Sistem",
+  "themeLight": "Deschis",
+  "themeDark": "Întunecat",
+  "primaryColorTitle": "Culoare principală",
+  "sectionLayout": "Layout",
+  "chatListWidthTitle": "Lățimea listei de conversații",
+  "chatListWidthDefault": "Implicit",
+  "resetToDefault": "Resetați la implicit WhatsApp",
+  "trayRestore": "Restaurare",
+  "traySettings": "Setări",
+  "trayQuit": "Ieșire",
+  "languageTitle": "Limbă",
+  "languageSystem": "Automat (sistem)"
+}

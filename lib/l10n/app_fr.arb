@@ -1,0 +1,23 @@
+{
+  "@@locale": "fr",
+  "appTitle": "WhatsApp",
+  "settingsTitle": "Paramètres",
+  "sectionBehavior": "Comportement",
+  "minimizeToTrayTitle": "Réduire dans la barre des tâches à la fermeture",
+  "minimizeToTraySubtitle": "Appuyer sur × masque la fenêtre dans la barre des tâches au lieu de quitter.",
+  "sectionAppearance": "Apparence",
+  "themeTitle": "Thème",
+  "themeSystem": "Système",
+  "themeLight": "Clair",
+  "themeDark": "Sombre",
+  "primaryColorTitle": "Couleur principale",
+  "sectionLayout": "Disposition",
+  "chatListWidthTitle": "Largeur de la liste de discussions",
+  "chatListWidthDefault": "Défaut",
+  "resetToDefault": "Réinitialiser au défaut WhatsApp",
+  "trayRestore": "Restaurer",
+  "traySettings": "Paramètres",
+  "trayQuit": "Quitter",
+  "languageTitle": "Langue",
+  "languageSystem": "Automatique (système)"
+}

@@ -1,0 +1,23 @@
+{
+  "@@locale": "el",
+  "appTitle": "WhatsApp",
+  "settingsTitle": "Ρυθμίσεις",
+  "sectionBehavior": "Συμπεριφορά",
+  "minimizeToTrayTitle": "Ελαχιστοποίηση στη γραμμή συστήματος κατά το κλείσιμο",
+  "minimizeToTraySubtitle": "Το πάτημα × αποκρύπτει το παράθυρο στη γραμμή συστήματος αντί να τερματίσει.",
+  "sectionAppearance": "Εμφάνιση",
+  "themeTitle": "Θέμα",
+  "themeSystem": "Σύστημα",
+  "themeLight": "Φωτεινό",
+  "themeDark": "Σκοτεινό",
+  "primaryColorTitle": "Κύριο χρώμα",
+  "sectionLayout": "Διάταξη",
+  "chatListWidthTitle": "Πλάτος λίστας συνομιλιών",
+  "chatListWidthDefault": "Προεπιλογή",
+  "resetToDefault": "Επαναφορά στις προεπιλογές του WhatsApp",
+  "trayRestore": "Επαναφορά",
+  "traySettings": "Ρυθμίσεις",
+  "trayQuit": "Έξοδος",
+  "languageTitle": "Γλώσσα",
+  "languageSystem": "Αυτόματο (σύστημα)"
+}

@@ -1,0 +1,23 @@
+{
+  "@@locale": "pl",
+  "appTitle": "WhatsApp",
+  "settingsTitle": "Ustawienia",
+  "sectionBehavior": "Zachowanie",
+  "minimizeToTrayTitle": "Minimalizuj do zasobnika systemowego przy zamykaniu",
+  "minimizeToTraySubtitle": "Naciśnięcie × ukrywa okno w zasobniku zamiast zamykać program.",
+  "sectionAppearance": "Wygląd",
+  "themeTitle": "Motyw",
+  "themeSystem": "System",
+  "themeLight": "Jasny",
+  "themeDark": "Ciemny",
+  "primaryColorTitle": "Kolor główny",
+  "sectionLayout": "Układ",
+  "chatListWidthTitle": "Szerokość listy czatów",
+  "chatListWidthDefault": "Domyślny",
+  "resetToDefault": "Przywróć domyślne WhatsApp",
+  "trayRestore": "Przywróć",
+  "traySettings": "Ustawienia",
+  "trayQuit": "Zamknij",
+  "languageTitle": "Język",
+  "languageSystem": "Automatyczny (system)"
+}

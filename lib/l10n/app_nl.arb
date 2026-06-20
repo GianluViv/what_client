@@ -1,0 +1,23 @@
+{
+  "@@locale": "nl",
+  "appTitle": "WhatsApp",
+  "settingsTitle": "Instellingen",
+  "sectionBehavior": "Gedrag",
+  "minimizeToTrayTitle": "Minimaliseren naar systeemvak bij sluiten",
+  "minimizeToTraySubtitle": "Op × drukken verbergt het venster in het systeemvak in plaats van af te sluiten.",
+  "sectionAppearance": "Uiterlijk",
+  "themeTitle": "Thema",
+  "themeSystem": "Systeem",
+  "themeLight": "Licht",
+  "themeDark": "Donker",
+  "primaryColorTitle": "Hoofdkleur",
+  "sectionLayout": "Indeling",
+  "chatListWidthTitle": "Breedte chatlijst",
+  "chatListWidthDefault": "Standaard",
+  "resetToDefault": "Terugzetten naar WhatsApp standaard",
+  "trayRestore": "Herstellen",
+  "traySettings": "Instellingen",
+  "trayQuit": "Afsluiten",
+  "languageTitle": "Taal",
+  "languageSystem": "Automatisch (systeem)"
+}

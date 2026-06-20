@@ -1,0 +1,23 @@
+{
+  "@@locale": "de",
+  "appTitle": "WhatsApp",
+  "settingsTitle": "Einstellungen",
+  "sectionBehavior": "Verhalten",
+  "minimizeToTrayTitle": "Beim Schließen in die Taskleiste minimieren",
+  "minimizeToTraySubtitle": "Ein Klick auf × versteckt das Fenster in der Taskleiste, anstatt das Programm zu beenden.",
+  "sectionAppearance": "Darstellung",
+  "themeTitle": "Design",
+  "themeSystem": "System",
+  "themeLight": "Hell",
+  "themeDark": "Dunkel",
+  "primaryColorTitle": "Hauptfarbe",
+  "sectionLayout": "Layout",
+  "chatListWidthTitle": "Breite der Chat-Liste",
+  "chatListWidthDefault": "Standard",
+  "resetToDefault": "Auf WhatsApp-Standard zurücksetzen",
+  "trayRestore": "Wiederherstellen",
+  "traySettings": "Einstellungen",
+  "trayQuit": "Beenden",
+  "languageTitle": "Sprache",
+  "languageSystem": "Automatisch (System)"
+}

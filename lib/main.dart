@@ -8,6 +8,8 @@ import 'package:webview_all_windows/webview_all_windows.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'l10n/app_localizations.dart';
+
 const _whatsAppUrl = 'https://web.whatsapp.com';
 const _userAgent =
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
@@ -16,6 +18,7 @@ const _keyMinimizeToTray = 'minimize_to_tray';
 const _keyThemeMode = 'theme_mode';
 const _keySeedColor = 'seed_color';
 const _keyChatListWidth = 'chat_list_width';
+const _keyLanguage = 'language';
 
 const _defaultSeed = Color(0xFF25D366); // WhatsApp green
 
@@ -40,15 +43,18 @@ const _seedColorChoices = <Color>[
 // ---------------------------------------------------------------------------
 
 class ThemeController extends ChangeNotifier {
-  ThemeController(this._mode, this._seedColor, this._chatListWidth);
+  ThemeController(this._mode, this._seedColor, this._chatListWidth, this._languageCode);
 
   ThemeMode _mode;
   Color _seedColor;
   double? _chatListWidth; // null = use WhatsApp's default (no override)
+  String? _languageCode; // null = follow OS locale
 
   ThemeMode get mode => _mode;
   Color get seedColor => _seedColor;
   double? get chatListWidth => _chatListWidth;
+  String? get languageCode => _languageCode;
+  Locale? get locale => _languageCode != null ? Locale(_languageCode!) : null;
 
   Future<void> setMode(ThemeMode mode) async {
     if (mode == _mode) return;
@@ -64,6 +70,18 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keySeedColor, color.toARGB32());
+  }
+
+  Future<void> setLanguage(String? code) async {
+    if (code == _languageCode) return;
+    _languageCode = code;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (code == null) {
+      await prefs.remove(_keyLanguage);
+    } else {
+      await prefs.setString(_keyLanguage, code);
+    }
   }
 
   // Pass null to clear the override and fall back to WhatsApp's default width.
@@ -103,6 +121,7 @@ void main() async {
     ThemeController.parseMode(prefs.getString(_keyThemeMode)),
     Color(prefs.getInt(_keySeedColor) ?? _defaultSeed.toARGB32()),
     prefs.getDouble(_keyChatListWidth),
+    prefs.getString(_keyLanguage) ?? 'en', // default: English
   );
 
   await windowManager.waitUntilReadyToShow(
@@ -154,6 +173,9 @@ class WhatsAppApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           title: 'WhatsApp',
           debugShowCheckedModeBanner: false,
+          locale: themeController.locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(seedColor: seed),
             useMaterial3: true,
@@ -214,7 +236,10 @@ class _WhatsAppViewState extends State<WhatsAppView>
     windowManager.addListener(this);
     // Both platforms use the native title bar, so Settings is only reachable
     // from the tray. The tray icon is therefore always shown.
-    _setupTray();
+    // Post-frame: AppLocalizations requires a fully mounted context.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _setupTray();
+    });
 
     // Re-apply the chat-list width override whenever appearance settings change.
     widget.themeController.addListener(_applyChatListWidth);
@@ -222,6 +247,13 @@ class _WhatsAppViewState extends State<WhatsAppView>
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent(_userAgent)
+      ..addJavaScriptChannel(
+        'WaWidthChannel',
+        onMessageReceived: (msg) {
+          final width = double.tryParse(msg.message);
+          if (width != null) widget.themeController.setChatListWidth(width);
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) => _progress.value = 0,
@@ -326,6 +358,8 @@ class _WhatsAppViewState extends State<WhatsAppView>
 
   Future<void> _setupTray() async {
     if (_trayReady) return;
+    // Capture localizations before any async gap.
+    final loc = AppLocalizations.of(context)!;
     try {
       // Windows loads the tray icon via LoadImage(IMAGE_ICON), which needs a
       // real .ico; Linux (WebKitGTK/AppIndicator) uses the PNG.
@@ -336,10 +370,10 @@ class _WhatsAppViewState extends State<WhatsAppView>
       );
       if (Platform.isWindows) await trayManager.setToolTip('WhatsApp');
       await trayManager.setContextMenu(Menu(items: [
-        MenuItem(key: 'show', label: 'Ripristina'),
-        MenuItem(key: 'settings', label: 'Impostazioni'),
+        MenuItem(key: 'show', label: loc.trayRestore),
+        MenuItem(key: 'settings', label: loc.traySettings),
         MenuItem.separator(),
-        MenuItem(key: 'quit', label: 'Chiudi'),
+        MenuItem(key: 'quit', label: loc.trayQuit),
       ]));
       trayManager.addListener(this);
       _trayReady = true;
@@ -425,6 +459,67 @@ class _WhatsAppViewState extends State<WhatsAppView>
   if(!window.__waObs){
     window.__waObs=new MutationObserver(function(){ if(window.__waT)return; window.__waT=setTimeout(function(){window.__waT=null;window.__waFix();},400); });
     window.__waObs.observe(document.body,{childList:true,subtree:true});
+  }
+})();
+(function(){
+  var HID='wa-resize-handle', MIN=280, MAX=600;
+  function posHandle(){
+    var side=document.getElementById('side');
+    if(!side) return;
+    var r=side.getBoundingClientRect();
+    if(r.width<10) return;
+    var h=document.getElementById(HID);
+    if(!h){
+      h=document.createElement('div');
+      h.id=HID;
+      h.style.cssText='position:fixed;top:0;width:6px;height:100vh;cursor:col-resize;z-index:99999;background:transparent;';
+      document.body.appendChild(h);
+      h.addEventListener('mouseenter',function(){h.style.background='rgba(128,128,128,0.18)';});
+      h.addEventListener('mouseleave',function(){h.style.background='transparent';});
+      h.addEventListener('mousedown',function(ev){
+        ev.preventDefault();
+        var sx=ev.clientX;
+        var sr=document.getElementById('side').getBoundingClientRect();
+        var sw=sr.width, sl=sr.left;
+        document.body.style.userSelect='none';
+        document.body.style.cursor='col-resize';
+        function move(e){
+          var nw=Math.round(Math.max(MIN,Math.min(MAX,sw+(e.clientX-sx))));
+          window.__waWidth=nw;
+          var el=document.getElementById('wa-custom-layout');
+          if(!el){el=document.createElement('style');el.id='wa-custom-layout';document.head.appendChild(el);}
+          el.textContent='div:has(> #side){flex:0 0 '+nw+'px!important;width:'+nw+'px!important;min-width:'+nw+'px!important;max-width:'+nw+'px!important;}';
+          h.style.left=(sl+nw-3)+'px';
+        }
+        function up(e){
+          document.removeEventListener('mousemove',move);
+          document.removeEventListener('mouseup',up);
+          document.body.style.userSelect='';
+          document.body.style.cursor='';
+          var nw=Math.round(Math.max(MIN,Math.min(MAX,sw+(e.clientX-sx))));
+          window.__waFix&&window.__waFix();
+          if(typeof WaWidthChannel!=='undefined') WaWidthChannel.postMessage(String(nw));
+        }
+        document.addEventListener('mousemove',move);
+        document.addEventListener('mouseup',up);
+      });
+      window.addEventListener('resize',function(){setTimeout(posHandle,50);});
+    }
+    h.style.left=(r.right-3)+'px';
+  }
+  window.__waPosHandle=posHandle;
+  // Hook __waFix at IIFE level (not inside if(!h)) so the MutationObserver
+  // repositions the handle after every React re-render, including the very
+  // first render when #side appears after page load.
+  if(!window.__waPosHandleHooked){
+    var origFix=window.__waFix;
+    window.__waFix=function(){origFix&&origFix();posHandle();};
+    window.__waPosHandleHooked=true;
+  }
+  if(document.getElementById('side')){
+    if(window.__waWidth==null) setTimeout(posHandle,100); else posHandle();
+  } else {
+    setTimeout(posHandle,1000);
   }
 })();
 ''';
@@ -539,16 +634,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final controller = widget.themeController;
     return Scaffold(
       // Standard AppBar; its automatic leading button returns to the webview.
-      appBar: AppBar(title: const Text('Impostazioni')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context)!.settingsTitle)),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          const _SectionHeader('Comportamento'),
+          _SectionHeader(AppLocalizations.of(context)!.sectionBehavior),
           _SettingsTile(
             icon: Icons.logout,
-            title: 'Riduci nel system tray alla chiusura',
-            subtitle:
-                'La pressione di × nasconde la finestra nel tray invece di uscire.',
+            title: AppLocalizations.of(context)!.minimizeToTrayTitle,
+            subtitle: AppLocalizations.of(context)!.minimizeToTraySubtitle,
             trailing: Switch.adaptive(
               value: _minimizeToTray,
               onChanged: (v) {
@@ -557,7 +651,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const _SectionHeader('Aspetto'),
+          _SectionHeader(AppLocalizations.of(context)!.sectionAppearance),
           // Rebuilds when the user changes theme mode / accent color.
           ListenableBuilder(
             listenable: controller,
@@ -569,26 +663,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _CardTitle(icon: Icons.brightness_6_outlined, title: 'Tema'),
+                        _CardTitle(icon: Icons.brightness_6_outlined, title: AppLocalizations.of(context)!.themeTitle),
                         const SizedBox(height: 12),
                         SizedBox(
                           width: double.infinity,
                           child: SegmentedButton<ThemeMode>(
-                            segments: const [
+                            segments: [
                               ButtonSegment(
                                 value: ThemeMode.system,
                                 icon: Icon(Icons.brightness_auto),
-                                label: Text('Sistema'),
+                                label: Text(AppLocalizations.of(context)!.themeSystem),
                               ),
                               ButtonSegment(
                                 value: ThemeMode.light,
                                 icon: Icon(Icons.light_mode_outlined),
-                                label: Text('Chiaro'),
+                                label: Text(AppLocalizations.of(context)!.themeLight),
                               ),
                               ButtonSegment(
                                 value: ThemeMode.dark,
                                 icon: Icon(Icons.dark_mode_outlined),
-                                label: Text('Scuro'),
+                                label: Text(AppLocalizations.of(context)!.themeDark),
                               ),
                             ],
                             selected: {controller.mode},
@@ -607,7 +701,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         _CardTitle(
                           icon: Icons.palette_outlined,
-                          title: 'Colore principale',
+                          title: AppLocalizations.of(context)!.primaryColorTitle,
                         ),
                         const SizedBox(height: 14),
                         Wrap(
@@ -627,10 +721,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+                _SettingsCard(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _CardTitle(
+                          icon: Icons.language_outlined,
+                          title: AppLocalizations.of(context)!.languageTitle,
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: DropdownButton<String?>(
+                            value: controller.languageCode,
+                            isExpanded: true,
+                            underline: const SizedBox.shrink(),
+                            items: [
+                              DropdownMenuItem(
+                                value: null,
+                                child: Text(AppLocalizations.of(context)!.languageSystem),
+                              ),
+                              const DropdownMenuItem(value: 'it', child: Text('Italiano')),
+                              const DropdownMenuItem(value: 'en', child: Text('English')),
+                              const DropdownMenuItem(value: 'es', child: Text('Español')),
+                              const DropdownMenuItem(value: 'fr', child: Text('Français')),
+                              const DropdownMenuItem(value: 'de', child: Text('Deutsch')),
+                              const DropdownMenuItem(value: 'pt', child: Text('Português')),
+                              const DropdownMenuItem(value: 'pl', child: Text('Polski')),
+                              const DropdownMenuItem(value: 'nl', child: Text('Nederlands')),
+                              const DropdownMenuItem(value: 'ro', child: Text('Română')),
+                              const DropdownMenuItem(value: 'el', child: Text('Ελληνικά')),
+                            ],
+                            onChanged: (v) => controller.setLanguage(v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          const _SectionHeader('Layout'),
+          _SectionHeader(AppLocalizations.of(context)!.sectionLayout),
           _SettingsCard(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
@@ -639,14 +779,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   Row(
                     children: [
-                      const _CardTitle(
+                      _CardTitle(
                         icon: Icons.view_column_outlined,
-                        title: 'Larghezza lista chat',
+                        title: AppLocalizations.of(context)!.chatListWidthTitle,
                       ),
                       const Spacer(),
                       Text(
                         _chatListWidth == null
-                            ? 'Default'
+                            ? AppLocalizations.of(context)!.chatListWidthDefault
                             : '${_chatListWidth!.round()} px',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -672,7 +812,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           setState(() => _chatListWidth = null);
                           controller.setChatListWidth(null);
                         },
-                        child: const Text('Reimposta al default WhatsApp'),
+                        child: Text(AppLocalizations.of(context)!.resetToDefault),
                       ),
                     ),
                 ],

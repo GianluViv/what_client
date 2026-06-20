@@ -1,0 +1,83 @@
+{
+  "@@locale": "it",
+  "appTitle": "WhatsApp",
+  "@appTitle": {
+    "description": "Titolo dell'applicazione"
+  },
+  "settingsTitle": "Impostazioni",
+  "@settingsTitle": {
+    "description": "Titolo della schermata Impostazioni"
+  },
+  "sectionBehavior": "Comportamento",
+  "@sectionBehavior": {
+    "description": "Intestazione sezione comportamento"
+  },
+  "minimizeToTrayTitle": "Riduci nel system tray alla chiusura",
+  "@minimizeToTrayTitle": {
+    "description": "Titolo opzione minimizza nel tray"
+  },
+  "minimizeToTraySubtitle": "La pressione di × nasconde la finestra nel tray invece di uscire.",
+  "@minimizeToTraySubtitle": {
+    "description": "Sottotitolo opzione minimizza nel tray"
+  },
+  "sectionAppearance": "Aspetto",
+  "@sectionAppearance": {
+    "description": "Intestazione sezione aspetto"
+  },
+  "themeTitle": "Tema",
+  "@themeTitle": {
+    "description": "Etichetta selezione tema"
+  },
+  "themeSystem": "Sistema",
+  "@themeSystem": {
+    "description": "Tema automatico (segue il sistema)"
+  },
+  "themeLight": "Chiaro",
+  "@themeLight": {
+    "description": "Tema chiaro"
+  },
+  "themeDark": "Scuro",
+  "@themeDark": {
+    "description": "Tema scuro"
+  },
+  "primaryColorTitle": "Colore principale",
+  "@primaryColorTitle": {
+    "description": "Etichetta scelta colore principale"
+  },
+  "sectionLayout": "Layout",
+  "@sectionLayout": {
+    "description": "Intestazione sezione layout"
+  },
+  "chatListWidthTitle": "Larghezza lista chat",
+  "@chatListWidthTitle": {
+    "description": "Etichetta larghezza lista chat"
+  },
+  "chatListWidthDefault": "Default",
+  "@chatListWidthDefault": {
+    "description": "Etichetta valore predefinito larghezza chat"
+  },
+  "resetToDefault": "Reimposta al default WhatsApp",
+  "@resetToDefault": {
+    "description": "Pulsante per ripristinare la larghezza predefinita"
+  },
+  "trayRestore": "Ripristina",
+  "@trayRestore": {
+    "description": "Voce menu tray: ripristina finestra"
+  },
+  "traySettings": "Impostazioni",
+  "@traySettings": {
+    "description": "Voce menu tray: apri impostazioni"
+  },
+  "trayQuit": "Chiudi",
+  "@trayQuit": {
+    "description": "Voce menu tray: chiudi applicazione"
+  },
+  "languageTitle": "Lingua",
+  "languageSystem": "Automatica (sistema)",
+  "@languageTitle": {
+    "description": "Etichetta selezione lingua"
+  },
+  "@languageSystem": {
+    "description": "Opzione lingua automatica (segue il sistema)"
+  }
+}
