@@ -59,6 +59,9 @@ class AppLocalizationsEl extends AppLocalizations {
   String get trayRestore => 'Επαναφορά';
 
   @override
+  String get trayReload => 'Επαναφόρτωση WhatsApp';
+
+  @override
   String get traySettings => 'Ρυθμίσεις';
 
   @override

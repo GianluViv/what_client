@@ -59,6 +59,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get trayRestore => 'Restaurar';
 
   @override
+  String get trayReload => 'Recarregar WhatsApp';
+
+  @override
   String get traySettings => 'Configurações';
 
   @override

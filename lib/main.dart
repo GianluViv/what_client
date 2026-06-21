@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
@@ -27,6 +28,21 @@ const _defaultSeed = Color(0xFF25D366); // WhatsApp green
 const _minChatListWidth = 280.0;
 const _maxChatListWidth = 600.0;
 const _fallbackChatListWidth = 400.0; // used only if measuring the default fails
+
+// Display names for the language picker. Driven by AppLocalizations.supportedLocales,
+// so adding a new .arb file + entry here is sufficient — the dropdown updates automatically.
+const _localeDisplayNames = <String, String>{
+  'de': 'Deutsch',
+  'el': 'Ελληνικά',
+  'en': 'English',
+  'es': 'Español',
+  'fr': 'Français',
+  'it': 'Italiano',
+  'nl': 'Nederlands',
+  'pl': 'Polski',
+  'pt': 'Português',
+  'ro': 'Română',
+};
 
 // Accent colors offered in Settings.
 const _seedColorChoices = <Color>[
@@ -55,7 +71,6 @@ class ThemeController extends ChangeNotifier {
   double? get chatListWidth => _chatListWidth;
   String? get languageCode => _languageCode;
   Locale? get locale => _languageCode != null ? Locale(_languageCode!) : null;
-
   Future<void> setMode(ThemeMode mode) async {
     if (mode == _mode) return;
     _mode = mode;
@@ -121,7 +136,7 @@ void main() async {
     ThemeController.parseMode(prefs.getString(_keyThemeMode)),
     Color(prefs.getInt(_keySeedColor) ?? _defaultSeed.toARGB32()),
     prefs.getDouble(_keyChatListWidth),
-    prefs.getString(_keyLanguage) ?? 'en', // default: English
+    prefs.getString(_keyLanguage), // null = follow OS locale
   );
 
   await windowManager.waitUntilReadyToShow(
@@ -217,14 +232,20 @@ class WhatsAppView extends StatefulWidget {
 }
 
 class _WhatsAppViewState extends State<WhatsAppView>
-    with WindowListener, TrayListener {
+    with WindowListener, TrayListener, SingleTickerProviderStateMixin {
   late final WebViewController _controller;
   final _progress = ValueNotifier<int>(0);
   final _webviewBoundaryKey = GlobalKey();
-  bool _repaintActive = false;
+  Ticker? _repaintTicker;
 
   late bool _minimizeToTray;
   bool _trayReady = false;
+  int _trayInitAttempts = 0;
+  bool _settingsOpen = false;
+  bool _openingSettings = false;
+  bool _cancelOpenSettings = false;
+  bool _widthInjected = false;
+  double? _lastInjectedWidth;
 
   // ── init / dispose ────────────────────────────────────────────────────────
 
@@ -251,7 +272,21 @@ class _WhatsAppViewState extends State<WhatsAppView>
         'WaWidthChannel',
         onMessageReceived: (msg) {
           final width = double.tryParse(msg.message);
-          if (width != null) widget.themeController.setChatListWidth(width);
+          if (width != null &&
+              width >= _minChatListWidth &&
+              width <= _maxChatListWidth) {
+            widget.themeController.setChatListWidth(width);
+          }
+        },
+      )
+      ..addJavaScriptChannel(
+        'WaExternalChannel',
+        onMessageReceived: (msg) {
+          final uri = Uri.tryParse(msg.message);
+          if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) return;
+          final url = msg.message;
+          if (Platform.isLinux) Process.run('xdg-open', [url]);
+          if (Platform.isWindows) Process.run('cmd', ['/c', 'start', '', url]);
         },
       )
       ..setNavigationDelegate(
@@ -262,6 +297,7 @@ class _WhatsAppViewState extends State<WhatsAppView>
             _progress.value = 100;
             // The page reload wipes injected styles, so re-apply on each load.
             _applyChatListWidth();
+            _injectLinkInterceptor();
           },
           onNavigationRequest: (request) {
             final uri = Uri.tryParse(request.url);
@@ -276,14 +312,13 @@ class _WhatsAppViewState extends State<WhatsAppView>
       ..loadRequest(Uri.parse(_whatsAppUrl));
 
     if (Platform.isLinux) {
-      _repaintActive = true;
-      WidgetsBinding.instance.addPersistentFrameCallback(_onPersistentFrame);
+      _repaintTicker = createTicker(_onRepaintTick)..start();
     }
   }
 
   @override
   void dispose() {
-    _repaintActive = false;
+    _repaintTicker?.dispose();
     widget.themeController.removeListener(_applyChatListWidth);
     windowManager.removeListener(this);
     if (_trayReady) trayManager.removeListener(this);
@@ -293,8 +328,8 @@ class _WhatsAppViewState extends State<WhatsAppView>
 
   // ── repaint loop (Linux only) ─────────────────────────────────────────────
 
-  void _onPersistentFrame(Duration _) {
-    if (!_repaintActive) return;
+  void _onRepaintTick(Duration _) {
+    if (_settingsOpen) return;
     _webviewBoundaryKey.currentContext?.findRenderObject()?.markNeedsPaint();
   }
 
@@ -328,6 +363,10 @@ class _WhatsAppViewState extends State<WhatsAppView>
       case 'show':
         _restoreWindow();
         break;
+      case 'reload':
+        _restoreWindow();
+        _controller.loadRequest(Uri.parse(_whatsAppUrl));
+        break;
       case 'settings':
         _restoreWindow();
         _openSettings();
@@ -347,7 +386,8 @@ class _WhatsAppViewState extends State<WhatsAppView>
   }
 
   void _restoreWindow() {
-    // Pop back to the main webview route (closes settings if open).
+    _cancelOpenSettings = true;
+    if (_settingsOpen) setState(() => _settingsOpen = false);
     WhatsAppApp.navigatorKey.currentState
         ?.popUntil((route) => route.isFirst);
     windowManager.show();
@@ -371,14 +411,22 @@ class _WhatsAppViewState extends State<WhatsAppView>
       if (Platform.isWindows) await trayManager.setToolTip('WhatsApp');
       await trayManager.setContextMenu(Menu(items: [
         MenuItem(key: 'show', label: loc.trayRestore),
+        MenuItem(key: 'reload', label: loc.trayReload),
         MenuItem(key: 'settings', label: loc.traySettings),
         MenuItem.separator(),
         MenuItem(key: 'quit', label: loc.trayQuit),
       ]));
       trayManager.addListener(this);
       _trayReady = true;
+      _trayInitAttempts = 0;
     } catch (e) {
-      debugPrint('Tray init failed: $e');
+      debugPrint('Tray init failed (attempt ${_trayInitAttempts + 1}): $e');
+      if (_trayInitAttempts < 3) {
+        _trayInitAttempts++;
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && !_trayReady) _setupTray();
+        });
+      }
     }
   }
 
@@ -399,6 +447,9 @@ class _WhatsAppViewState extends State<WhatsAppView>
   // WhatsApp's React re-renders, unlike inline element styles.
   Future<void> _applyChatListWidth() async {
     final width = widget.themeController.chatListWidth;
+    if (_widthInjected && width == _lastInjectedWidth) return;
+    _widthInjected = true;
+    _lastInjectedWidth = width;
     final wExpr = width == null ? 'null' : width.round().toString();
     // Two things, both robust to WhatsApp's hashed class names:
     //  1. Width: pin the chat-list COLUMN wrapper (the element whose direct
@@ -530,6 +581,45 @@ class _WhatsAppViewState extends State<WhatsAppView>
     }
   }
 
+  // Intercepts window.open() and target="_blank" clicks.
+  // External URLs (not whatsapp.com / whatsapp.net) are forwarded to the OS
+  // default browser via WaExternalChannel. All other window.open() calls
+  // return null — no popup webview is ever created inside the app window,
+  // which also prevents WhatsApp's multi-window detection dialog.
+  Future<void> _injectLinkInterceptor() async {
+    const js = '''
+(function(){
+  if(window.__waLinkHandler){
+    document.removeEventListener('click', window.__waLinkHandler, true);
+    window.__waLinkHandler = null;
+  }
+  function isExternal(url){
+    try { var h=new URL(url).hostname; return !h.endsWith('whatsapp.com')&&!h.endsWith('whatsapp.net'); }
+    catch(e){ return false; }
+  }
+  window.open = function(url, target, features){
+    if(url && url !== '' && url !== 'about:blank' && isExternal(url)){
+      if(typeof WaExternalChannel !== 'undefined') WaExternalChannel.postMessage(url);
+    }
+    return null;
+  };
+  window.__waLinkHandler = function(e){
+    var a = e.target.closest ? e.target.closest('a[target="_blank"]') : null;
+    if(!a || !a.href) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(isExternal(a.href)){
+      if(typeof WaExternalChannel !== 'undefined') WaExternalChannel.postMessage(a.href);
+    }
+  };
+  document.addEventListener('click', window.__waLinkHandler, true);
+})();
+''';
+    try {
+      await _controller.runJavaScript(js);
+    } catch (_) {}
+  }
+
   // Reads WhatsApp's current chat-list width from the DOM, used as the slider's
   // starting point. Returns null if #side is absent (e.g. logged out).
   Future<double?> _measureChatListWidth() async {
@@ -546,23 +636,28 @@ class _WhatsAppViewState extends State<WhatsAppView>
   }
 
   Future<void> _openSettings() async {
-    // Measure WhatsApp's current pane width so the slider can start there.
-    final defaultWidth = await _measureChatListWidth() ?? _fallbackChatListWidth;
-    if (!mounted) return;
-    // PageRouteBuilder with zero duration: the webview route is immediately
-    // occluded, so paint() is not called → webview_all_linux hides WebKit →
-    // the settings screen renders in full without the overlay on top.
-    Navigator.of(context).push(PageRouteBuilder<void>(
-      opaque: true,
-      pageBuilder: (_, _, _) => SettingsScreen(
-        minimizeToTray: _minimizeToTray,
-        onMinimizeToTrayChanged: _onMinimizeToTrayChanged,
-        themeController: widget.themeController,
-        defaultChatListWidth: defaultWidth,
-      ),
-      transitionDuration: Duration.zero,
-      reverseTransitionDuration: Duration.zero,
-    ));
+    if (_openingSettings) return;
+    _openingSettings = true;
+    _cancelOpenSettings = false;
+    try {
+      final defaultWidth = await _measureChatListWidth() ?? _fallbackChatListWidth;
+      if (!mounted || _cancelOpenSettings) return;
+      setState(() => _settingsOpen = true);
+      await Navigator.of(context).push(PageRouteBuilder<void>(
+        opaque: true,
+        pageBuilder: (_, _, _) => SettingsScreen(
+          minimizeToTray: _minimizeToTray,
+          onMinimizeToTrayChanged: _onMinimizeToTrayChanged,
+          themeController: widget.themeController,
+          defaultChatListWidth: defaultWidth,
+        ),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ));
+      if (mounted) setState(() => _settingsOpen = false);
+    } finally {
+      _openingSettings = false;
+    }
   }
 
   // ── build ─────────────────────────────────────────────────────────────────
@@ -749,16 +844,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 value: null,
                                 child: Text(AppLocalizations.of(context)!.languageSystem),
                               ),
-                              const DropdownMenuItem(value: 'it', child: Text('Italiano')),
-                              const DropdownMenuItem(value: 'en', child: Text('English')),
-                              const DropdownMenuItem(value: 'es', child: Text('Español')),
-                              const DropdownMenuItem(value: 'fr', child: Text('Français')),
-                              const DropdownMenuItem(value: 'de', child: Text('Deutsch')),
-                              const DropdownMenuItem(value: 'pt', child: Text('Português')),
-                              const DropdownMenuItem(value: 'pl', child: Text('Polski')),
-                              const DropdownMenuItem(value: 'nl', child: Text('Nederlands')),
-                              const DropdownMenuItem(value: 'ro', child: Text('Română')),
-                              const DropdownMenuItem(value: 'el', child: Text('Ελληνικά')),
+                              for (final locale in AppLocalizations.supportedLocales)
+                                if (_localeDisplayNames.containsKey(locale.languageCode))
+                                  DropdownMenuItem(
+                                    value: locale.languageCode,
+                                    child: Text(_localeDisplayNames[locale.languageCode]!),
+                                  ),
                             ],
                             onChanged: (v) => controller.setLanguage(v),
                           ),

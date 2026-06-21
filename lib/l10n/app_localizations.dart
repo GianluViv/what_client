@@ -210,6 +210,12 @@ abstract class AppLocalizations {
   /// **'Ripristina'**
   String get trayRestore;
 
+  /// No description provided for @trayReload.
+  ///
+  /// In it, this message translates to:
+  /// **'Ricarica WhatsApp'**
+  String get trayReload;
+
   /// Voce menu tray: apri impostazioni
   ///
   /// In it, this message translates to:

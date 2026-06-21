@@ -16,6 +16,7 @@
   "chatListWidthDefault": "Standard",
   "resetToDefault": "Auf WhatsApp-Standard zurücksetzen",
   "trayRestore": "Wiederherstellen",
+  "trayReload": "WhatsApp neu laden",
   "traySettings": "Einstellungen",
   "trayQuit": "Beenden",
   "languageTitle": "Sprache",

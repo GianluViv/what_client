@@ -59,6 +59,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get trayRestore => 'Wiederherstellen';
 
   @override
+  String get trayReload => 'WhatsApp neu laden';
+
+  @override
   String get traySettings => 'Einstellungen';
 
   @override

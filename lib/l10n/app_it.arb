@@ -64,6 +64,7 @@
   "@trayRestore": {
     "description": "Voce menu tray: ripristina finestra"
   },
+  "trayReload": "Ricarica WhatsApp",
   "traySettings": "Impostazioni",
   "@traySettings": {
     "description": "Voce menu tray: apri impostazioni"

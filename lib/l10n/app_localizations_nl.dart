@@ -58,6 +58,9 @@ class AppLocalizationsNl extends AppLocalizations {
   String get trayRestore => 'Herstellen';
 
   @override
+  String get trayReload => 'WhatsApp herladen';
+
+  @override
   String get traySettings => 'Instellingen';
 
   @override
