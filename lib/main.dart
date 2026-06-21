@@ -241,6 +241,7 @@ class _WhatsAppViewState extends State<WhatsAppView>
   late bool _minimizeToTray;
   bool _trayReady = false;
   int _trayInitAttempts = 0;
+  bool _hasUnread = false;
   bool _settingsOpen = false;
   bool _openingSettings = false;
   bool _cancelOpenSettings = false;
@@ -280,6 +281,10 @@ class _WhatsAppViewState extends State<WhatsAppView>
         },
       )
       ..addJavaScriptChannel(
+        'WaTitleChannel',
+        onMessageReceived: (msg) => _onTitleChanged(msg.message),
+      )
+      ..addJavaScriptChannel(
         'WaExternalChannel',
         onMessageReceived: (msg) {
           final uri = Uri.tryParse(msg.message);
@@ -298,6 +303,7 @@ class _WhatsAppViewState extends State<WhatsAppView>
             // The page reload wipes injected styles, so re-apply on each load.
             _applyChatListWidth();
             _injectLinkInterceptor();
+            _injectTitleMonitor();
           },
           onNavigationRequest: (request) {
             final uri = Uri.tryParse(request.url);
@@ -419,6 +425,7 @@ class _WhatsAppViewState extends State<WhatsAppView>
       trayManager.addListener(this);
       _trayReady = true;
       _trayInitAttempts = 0;
+      if (_hasUnread) _updateTrayIcon();
     } catch (e) {
       debugPrint('Tray init failed (attempt ${_trayInitAttempts + 1}): $e');
       if (_trayInitAttempts < 3) {
@@ -658,6 +665,61 @@ class _WhatsAppViewState extends State<WhatsAppView>
     } finally {
       _openingSettings = false;
     }
+  }
+
+  // ── unread badge ──────────────────────────────────────────────────────────
+
+  void _onTitleChanged(String title) {
+    // WhatsApp Web sets the title to "(N) WhatsApp" when there are N unread messages.
+    final hasUnread = RegExp(r'^\(\d+\)').hasMatch(title);
+    if (hasUnread == _hasUnread) return;
+    _hasUnread = hasUnread;
+    if (_trayReady) _updateTrayIcon();
+  }
+
+  Future<void> _updateTrayIcon() async {
+    final icon = _hasUnread
+        ? (Platform.isWindows
+            ? 'assets/icons/tray_icon_unread.ico'
+            : 'assets/icons/tray_icon_unread.png')
+        : (Platform.isWindows
+            ? 'assets/icons/tray_icon.ico'
+            : 'assets/icons/tray_icon.png');
+    try {
+      await trayManager.setIcon(icon);
+    } catch (e) {
+      debugPrint('Tray icon update failed: $e');
+    }
+  }
+
+  Future<void> _injectTitleMonitor() async {
+    const js = '''
+(function(){
+  if (window.__waTitleObs) return;
+  function sendTitle() {
+    if (typeof WaTitleChannel !== 'undefined') {
+      WaTitleChannel.postMessage(document.title || '');
+    }
+  }
+  function attach(el) {
+    window.__waTitleObs = new MutationObserver(sendTitle);
+    window.__waTitleObs.observe(el, {childList:true,characterData:true,subtree:true});
+    sendTitle();
+  }
+  var titleEl = document.querySelector('title');
+  if (titleEl) {
+    attach(titleEl);
+  } else {
+    var t = setInterval(function(){
+      var el = document.querySelector('title');
+      if (el) { clearInterval(t); attach(el); }
+    }, 500);
+  }
+})();
+''';
+    try {
+      await _controller.runJavaScript(js);
+    } catch (_) {}
   }
 
   // ── build ─────────────────────────────────────────────────────────────────
