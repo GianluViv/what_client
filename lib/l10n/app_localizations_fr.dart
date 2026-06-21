@@ -65,6 +65,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get traySettings => 'Paramètres';
 
   @override
+  String get trayKofi => 'Offre-moi un café ☕';
+
+  @override
   String get trayQuit => 'Quitter';
 
   @override

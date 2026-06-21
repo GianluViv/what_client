@@ -222,6 +222,12 @@ abstract class AppLocalizations {
   /// **'Impostazioni'**
   String get traySettings;
 
+  /// Voce menu tray: link Ko-fi
+  ///
+  /// In it, this message translates to:
+  /// **'Offrimi un caffè ☕'**
+  String get trayKofi;
+
   /// Voce menu tray: chiudi applicazione
   ///
   /// In it, this message translates to:

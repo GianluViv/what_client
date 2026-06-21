@@ -64,6 +64,9 @@ class AppLocalizationsNl extends AppLocalizations {
   String get traySettings => 'Instellingen';
 
   @override
+  String get trayKofi => 'Trakteer me op een koffie ☕';
+
+  @override
   String get trayQuit => 'Afsluiten';
 
   @override

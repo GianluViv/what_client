@@ -64,6 +64,9 @@ class AppLocalizationsIt extends AppLocalizations {
   String get traySettings => 'Impostazioni';
 
   @override
+  String get trayKofi => 'Offrimi un caffè ☕';
+
+  @override
   String get trayQuit => 'Chiudi';
 
   @override

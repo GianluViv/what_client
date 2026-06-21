@@ -65,6 +65,9 @@ class AppLocalizationsRo extends AppLocalizations {
   String get traySettings => 'Setări';
 
   @override
+  String get trayKofi => 'Oferă-mi un cafea ☕';
+
+  @override
   String get trayQuit => 'Ieșire';
 
   @override

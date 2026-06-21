@@ -7,6 +7,7 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:webview_all_linux/webview_all_linux.dart';
 import 'package:webview_all_windows/webview_all_windows.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'l10n/app_localizations.dart';
@@ -377,6 +378,9 @@ class _WhatsAppViewState extends State<WhatsAppView>
         _restoreWindow();
         _openSettings();
         break;
+      case 'kofi':
+        launchUrl(Uri.parse('https://ko-fi.com/gianluviv'));
+        break;
       case 'quit':
         windowManager.destroy();
         break;
@@ -419,6 +423,8 @@ class _WhatsAppViewState extends State<WhatsAppView>
         MenuItem(key: 'show', label: loc.trayRestore),
         MenuItem(key: 'reload', label: loc.trayReload),
         MenuItem(key: 'settings', label: loc.traySettings),
+        MenuItem.separator(),
+        MenuItem(key: 'kofi', label: loc.trayKofi),
         MenuItem.separator(),
         MenuItem(key: 'quit', label: loc.trayQuit),
       ]));

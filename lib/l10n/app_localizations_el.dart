@@ -65,6 +65,9 @@ class AppLocalizationsEl extends AppLocalizations {
   String get traySettings => 'Ρυθμίσεις';
 
   @override
+  String get trayKofi => 'Κέρασέ με έναν καφέ ☕';
+
+  @override
   String get trayQuit => 'Έξοδος';
 
   @override

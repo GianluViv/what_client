@@ -69,6 +69,7 @@
   "@traySettings": {
     "description": "Voce menu tray: apri impostazioni"
   },
+  "trayKofi": "Offrimi un caffè ☕",
   "trayQuit": "Chiudi",
   "@trayQuit": {
     "description": "Voce menu tray: chiudi applicazione"
