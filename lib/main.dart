@@ -16,6 +16,11 @@ const _whatsAppUrl = 'https://web.whatsapp.com';
 const _userAgent =
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
+// Localhost port used purely as a cross-platform single-instance lock. Binding
+// it succeeds for the first copy only; a second copy fails to bind, signals the
+// first to surface its window, then exits.
+const _singleInstancePort = 45654;
+
 const _keyMinimizeToTray = 'minimize_to_tray';
 const _keyThemeMode = 'theme_mode';
 const _keySeedColor = 'seed_color';
@@ -123,8 +128,52 @@ class ThemeController extends ChangeNotifier {
 // Entry point
 // ---------------------------------------------------------------------------
 
+// Tries to claim the single-instance lock. Returns the bound socket on success
+// (this is the first/primary copy), or null if another copy already holds it.
+Future<ServerSocket?> _acquireSingleInstanceLock() async {
+  try {
+    return await ServerSocket.bind(
+      InternetAddress.loopbackIPv4,
+      _singleInstancePort,
+    );
+  } on SocketException {
+    return null;
+  }
+}
+
+// Best-effort: tell the already-running copy to bring its window to the front.
+Future<void> _signalExistingInstance() async {
+  try {
+    final socket = await Socket.connect(
+      InternetAddress.loopbackIPv4,
+      _singleInstancePort,
+      timeout: const Duration(seconds: 2),
+    );
+    socket.write('focus');
+    await socket.flush();
+    await socket.close();
+  } catch (_) {
+    // If we can't reach it, nothing more we can do — just exit.
+  }
+}
+
+// Restore + focus the primary window when a second copy was launched.
+Future<void> _surfaceWindow() async {
+  if (await windowManager.isMinimized()) await windowManager.restore();
+  if (!await windowManager.isVisible()) await windowManager.show();
+  await windowManager.focus();
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Refuse to start a second copy: if the lock is already held, ask the running
+  // copy to surface and quit immediately.
+  final lockSocket = await _acquireSingleInstanceLock();
+  if (lockSocket == null) {
+    await _signalExistingInstance();
+    exit(0);
+  }
 
   if (Platform.isLinux) LinuxWebViewPlatform.registerWith();
   if (Platform.isWindows) WindowsWebViewPlatform.registerWith();
@@ -155,6 +204,13 @@ void main() async {
       await windowManager.focus();
     },
   );
+
+  // Listen for later copies asking us to surface. Drain each connection; any
+  // contact is the signal — bring the window back to the front.
+  lockSocket.listen((client) {
+    client.drain<void>().catchError((_) {});
+    _surfaceWindow();
+  });
 
   runApp(WhatsAppApp(
     initialMinimizeToTray: minimizeToTray,
