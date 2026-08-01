@@ -365,7 +365,9 @@ class _WhatsAppViewState extends State<WhatsAppView>
           onNavigationRequest: (request) {
             final uri = Uri.tryParse(request.url);
             if (uri == null ||
-                (uri.scheme != 'https' && uri.scheme != 'http')) {
+                (uri.scheme != 'https' &&
+                    uri.scheme != 'http' &&
+                    uri.scheme != 'blob')) {
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
@@ -675,6 +677,7 @@ class _WhatsAppViewState extends State<WhatsAppView>
   window.__waLinkHandler = function(e){
     var a = e.target.closest ? e.target.closest('a[target="_blank"]') : null;
     if(!a || !a.href) return;
+    if(a.hasAttribute('download')) return; // let native download handling take over
     e.preventDefault();
     e.stopPropagation();
     if(isExternal(a.href)){

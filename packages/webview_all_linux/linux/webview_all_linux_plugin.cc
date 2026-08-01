@@ -712,6 +712,121 @@ static gboolean show_notification_cb(WebKitWebView* /*widget*/,
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Download support ──────────────────────────────────────────────────────
+//
+// Downloads are shown as native desktop notifications (reusing the libnotify
+// helpers above) rather than routed back to Dart: the webview is layered as
+// a GtkOverlay child *above* the Flutter view (see ensure_overlay above), so
+// an in-app SnackBar could end up painted underneath it and never be seen.
+
+static void save_dialog_response_cb(GtkNativeDialog* native,
+                                    gint response_id,
+                                    gpointer user_data) {
+  WebKitDownload* download = WEBKIT_DOWNLOAD(user_data);
+  if (response_id == GTK_RESPONSE_ACCEPT) {
+    GtkFileChooser* chooser = GTK_FILE_CHOOSER(native);
+    GFile* file = gtk_file_chooser_get_file(chooser);
+    gchar* uri = g_file_get_uri(file);
+    webkit_download_set_destination(download, uri);
+    g_free(uri);
+    g_object_unref(file);
+  } else {
+    webkit_download_cancel(download);
+  }
+  g_object_unref(download);
+  g_object_unref(native);
+}
+
+static gboolean decide_destination_cb(WebKitDownload* download,
+                                      gchar* suggested_filename,
+                                      gpointer user_data) {
+  GtkWindow* parent = nullptr;
+  WebKitWebView* view = webkit_download_get_web_view(download);
+  if (view != nullptr) {
+    GtkWidget* toplevel = gtk_widget_get_toplevel(GTK_WIDGET(view));
+    if (GTK_IS_WINDOW(toplevel)) {
+      parent = GTK_WINDOW(toplevel);
+    }
+  }
+
+  GtkFileChooserNative* dialog = gtk_file_chooser_native_new(
+      "Salva file", parent, GTK_FILE_CHOOSER_ACTION_SAVE, "_Salva",
+      "_Annulla");
+  gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog),
+                                                 TRUE);
+  if (suggested_filename != nullptr && *suggested_filename != '\0') {
+    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog),
+                                      suggested_filename);
+  }
+  const gchar* downloads_dir =
+      g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
+  if (downloads_dir != nullptr) {
+    gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog),
+                                        downloads_dir);
+  }
+
+  g_signal_connect(dialog, "response", G_CALLBACK(save_dialog_response_cb),
+                   g_object_ref(download));
+  gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog));
+  return TRUE;
+}
+
+static void show_download_notification(const gchar* title,
+                                       const gchar* body) {
+  if (!notify_is_initted()) notify_init("WhatsApp");
+
+  NotifyNotification* n = notify_notification_new(title, body, nullptr);
+  notify_notification_set_timeout(n, NOTIFY_EXPIRES_DEFAULT);
+
+  GdkPixbuf* pb = get_app_icon_pixbuf();
+  if (pb) notify_notification_set_image_from_pixbuf(n, pb);
+
+  GError* err = nullptr;
+  notify_notification_show(n, &err);
+  if (err) g_error_free(err);
+  g_object_unref(n);
+}
+
+static void download_finished_cb(WebKitDownload* download,
+                                 gpointer /*user_data*/) {
+  const gchar* destination = webkit_download_get_destination(download);
+  gchar* path = destination != nullptr
+                    ? g_filename_from_uri(destination, nullptr, nullptr)
+                    : nullptr;
+  show_download_notification("File salvato",
+                             path != nullptr
+                                 ? path
+                                 : (destination != nullptr ? destination
+                                                           : ""));
+  g_free(path);
+}
+
+static void download_failed_cb(WebKitDownload* download, GError* error,
+                               gpointer /*user_data*/) {
+  gboolean cancelled =
+      error != nullptr &&
+      g_error_matches(error, WEBKIT_DOWNLOAD_ERROR,
+                      WEBKIT_DOWNLOAD_ERROR_CANCELLED_BY_USER);
+  if (cancelled) {
+    return;
+  }
+  show_download_notification(
+      "Download fallito", error != nullptr ? error->message : "Errore sconosciuto");
+}
+
+static void download_started_cb(WebKitWebContext* /*context*/,
+                                WebKitDownload* download,
+                                gpointer /*user_data*/) {
+  g_signal_connect(download, "decide-destination",
+                   G_CALLBACK(decide_destination_cb), nullptr);
+  g_signal_connect(download, "finished", G_CALLBACK(download_finished_cb),
+                   nullptr);
+  g_signal_connect(download, "failed", G_CALLBACK(download_failed_cb),
+                   nullptr);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+
 static gboolean permission_request_cb(WebKitWebView* widget,
                                       WebKitPermissionRequest* request,
                                       gpointer user_data) {
@@ -1703,5 +1818,9 @@ void webview_all_linux_plugin_register_with_registrar(
                                             root_method_call_cb,
                                             g_object_ref(plugin),
                                             g_object_unref);
+
+  g_signal_connect(webkit_web_context_get_default(), "download-started",
+                   G_CALLBACK(download_started_cb), plugin);
+
   g_object_unref(plugin);
 }

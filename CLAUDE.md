@@ -61,6 +61,24 @@ on `Platform.isLinux` / `Platform.isWindows` throughout:
    the WebKit surface. Otherwise the native WebKit layer would draw on top of the settings
    screen. Preserve `opaque: true` + `Duration.zero`.
 
+4. **File downloads (Save As) are handled entirely in native code, per platform.** Neither
+   `webview_flutter` nor its platform interface has a downloads API, so this is implemented
+   directly in the vendored plugins, not in `main.dart`:
+   - **Linux** (`webview_all_linux_plugin.cc`): `download-started` is connected once on the
+     default `WebKitWebContext` at plugin registration; `decide-destination` on the
+     resulting `WebKitDownload` shows a `GtkFileChooserNative` Save dialog and calls
+     `webkit_download_set_destination()` (or `webkit_download_cancel()`). Completion/failure
+     is reported via a **libnotify desktop notification**, not a Flutter `SnackBar` — the
+     webview is a `GtkOverlay` child stacked *above* the Flutter view, so in-app UI can end
+     up painted underneath it and never be seen.
+   - **Windows** (`webview_all_windows/windows/webview.cc`, `RegisterEventHandlers`): the
+     `DownloadStarting` handler takes a `GetDeferral()` and MUST call `deferral->Complete()`
+     before returning — the upstream pub.dev package (0.5.2) takes the deferral but never
+     completes it, which leaves every download permanently stuck. `ShowDownloadSaveDialog`
+     (a `GetSaveFileNameW` common dialog) prompts for a destination before completing.
+   - If bumping `webview_all_windows` to a newer pub.dev version, re-check whether this bug
+     and the missing Save dialog still need patching, or vendor from the new version instead.
+
 ### Tray lifecycle
 
 The tray icon is created/destroyed dynamically based on the setting (`_setupTray` /
@@ -74,8 +92,9 @@ ensures the `TrayListener` is only attached when a tray exists. Tray icon asset:
 [pubspec.yaml](pubspec.yaml):
 
 - **`webview_all_linux`** — WebKitGTK-backed WebView for Linux (implements the
-  `webview_all` / `webview_flutter_platform_interface`). Windows uses the pub.dev
-  `webview_all_windows`.
+  `webview_all` / `webview_flutter_platform_interface`).
+- **`webview_all_windows`** — WebView2-backed WebView for Windows, vendored (forked) from
+  the pub.dev package of the same name to patch the download handling described above.
 - **`tray_manager`** — system tray support.
 
 Treat these as third-party source: prefer changing `lib/main.dart` over editing them, and

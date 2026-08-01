@@ -38,7 +38,8 @@ dependencies:
   webview_flutter: ^4.14.0
   webview_all_linux:
     path: packages/webview_all_linux
-  webview_all_windows: ^0.5.2
+  webview_all_windows:
+    path: packages/webview_all_windows
   window_manager: ^0.4.3
   tray_manager:
     path: packages/tray_manager
