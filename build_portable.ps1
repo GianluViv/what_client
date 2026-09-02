@@ -2,15 +2,20 @@
 # Crea una build Windows "portable" di what_client in una cartella nella radice del progetto.
 # La release Windows di Flutter e' gia' autocontenuta (exe + DLL + cartella data):
 # basta copiarla in una cartella dedicata e si puo' spostare/zippare a piacere.
+# Infine impacchetta il tutto in un unico exe portabile con Enigma Virtual Box
+# (stesso approccio usato in collaudo_ariosa_valsir\scripts\pack_portable_exe.ps1).
 #
 # Uso:
-#   .\build_portable.ps1            # build release + copia in .\portable
-#   .\build_portable.ps1 -Zip       # crea anche un archivio .zip
-#   .\build_portable.ps1 -SkipBuild # salta 'flutter build' e copia l'output esistente
+#   .\build_portable.ps1                 # build release + copia in .\what_client-portable
+#                                         #   + genera .\release_portable\what_client.exe (unico file)
+#   .\build_portable.ps1 -Zip            # crea anche un archivio .zip della cartella
+#   .\build_portable.ps1 -SkipBuild      # salta 'flutter build' e copia l'output esistente
+#   .\build_portable.ps1 -SkipSingleExe  # salta il packaging nell'unico exe (Enigma Virtual Box)
 
 param(
     [switch]$Zip,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipSingleExe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,11 +43,15 @@ if (-not (Test-Path $BuildOutput)) {
 }
 
 # --- 2. Copia nella cartella portable ---------------------------------------
+# Nota: si svuota il contenuto invece di rimuovere e ricreare la cartella stessa,
+# perche' un editor/watcher (es. VSCode) puo' tenere un handle aperto sulla
+# cartella di primo livello anche se i file al suo interno sono liberi.
 Write-Host "==> Preparo $DestDir" -ForegroundColor Cyan
 if (Test-Path $DestDir) {
-    Remove-Item $DestDir -Recurse -Force
+    Get-ChildItem -LiteralPath $DestDir -Force | Remove-Item -Recurse -Force
+} else {
+    New-Item -ItemType Directory -Path $DestDir | Out-Null
 }
-New-Item -ItemType Directory -Path $DestDir | Out-Null
 
 Copy-Item -Path (Join-Path $BuildOutput '*') -Destination $DestDir -Recurse -Force
 
@@ -60,4 +69,19 @@ if ($Zip) {
     Write-Host "==> Creo archivio $ZipPath" -ForegroundColor Cyan
     Compress-Archive -Path (Join-Path $DestDir '*') -DestinationPath $ZipPath
     Write-Host "==> Archivio pronto: $ZipPath" -ForegroundColor Green
+}
+
+# --- 4. Pacchettizza in un unico exe portabile -------------------------------
+# Usa Enigma Virtual Box (richiede installazione a parte, vedi scripts\pack_portable_exe.ps1).
+# Eseguito come processo figlio separato: se il tool manca, lo script termina con
+# "exit 1" al suo interno, e questo non deve interrompere anche build_portable.ps1.
+if (-not $SkipSingleExe) {
+    $SingleExePath = Join-Path $ProjectRoot "release_portable\$AppName.exe"
+    powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot "scripts\pack_portable_exe.ps1") -ReleaseDir $DestDir -OutputExe $SingleExePath
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "==> Exe portabile unico pronto: $SingleExePath" -ForegroundColor Green
+    }
+    else {
+        Write-Host "Packaging exe portabile saltato (vedi avviso sopra). La cartella $DestDir resta comunque utilizzabile." -ForegroundColor Yellow
+    }
 }
