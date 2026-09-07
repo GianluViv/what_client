@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Portable build output (build_portable.ps1 / make_appimage.sh)
+/what_client-portable/
+/release_portable/
+*.AppImage

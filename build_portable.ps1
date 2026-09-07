@@ -2,20 +2,28 @@
 # Crea una build Windows "portable" di what_client in una cartella nella radice del progetto.
 # La release Windows di Flutter e' gia' autocontenuta (exe + DLL + cartella data):
 # basta copiarla in una cartella dedicata e si puo' spostare/zippare a piacere.
-# Infine impacchetta il tutto in un unico exe portabile con Enigma Virtual Box
-# (stesso approccio usato in collaudo_ariosa_valsir\scripts\pack_portable_exe.ps1).
+#
+# NON impacchettare il risultato in un unico exe con Enigma Virtual Box (o strumenti
+# di virtualizzazione/protezione EXE simili): what_client usa webview_all_windows, che
+# compone il contenuto WebView2 tramite Windows.Graphics.Capture / DirectComposition
+# (packages\webview_all_windows\windows\webview_platform.cc). L'hooking a basso livello
+# delle API di file-system che questi tool applicano al processo interferisce con
+# l'inizializzazione del processo GPU/sandbox di WebView2 e con l'handoff della
+# superficie di composizione: il risultato e' una finestra permanentemente nera al posto
+# di WhatsApp, anche se il resto della UI Flutter nativa funziona. Verificato: la stessa
+# cartella non impacchettata funziona correttamente. Se in futuro serve di nuovo un
+# singolo exe portabile, usare un self-extracting archive (es. 7-Zip SFX, gia'
+# disponibile su questa macchina in "C:\Program Files\7-Zip\7z.sfx") che estrae la
+# cartella intatta e lancia l'exe reale, invece di virtualizzare il processo in memoria.
 #
 # Uso:
 #   .\build_portable.ps1                 # build release + copia in .\what_client-portable
-#                                         #   + genera .\release_portable\what_client.exe (unico file)
 #   .\build_portable.ps1 -Zip            # crea anche un archivio .zip della cartella
 #   .\build_portable.ps1 -SkipBuild      # salta 'flutter build' e copia l'output esistente
-#   .\build_portable.ps1 -SkipSingleExe  # salta il packaging nell'unico exe (Enigma Virtual Box)
 
 param(
     [switch]$Zip,
-    [switch]$SkipBuild,
-    [switch]$SkipSingleExe
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -69,19 +77,4 @@ if ($Zip) {
     Write-Host "==> Creo archivio $ZipPath" -ForegroundColor Cyan
     Compress-Archive -Path (Join-Path $DestDir '*') -DestinationPath $ZipPath
     Write-Host "==> Archivio pronto: $ZipPath" -ForegroundColor Green
-}
-
-# --- 4. Pacchettizza in un unico exe portabile -------------------------------
-# Usa Enigma Virtual Box (richiede installazione a parte, vedi scripts\pack_portable_exe.ps1).
-# Eseguito come processo figlio separato: se il tool manca, lo script termina con
-# "exit 1" al suo interno, e questo non deve interrompere anche build_portable.ps1.
-if (-not $SkipSingleExe) {
-    $SingleExePath = Join-Path $ProjectRoot "release_portable\$AppName.exe"
-    powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot "scripts\pack_portable_exe.ps1") -ReleaseDir $DestDir -OutputExe $SingleExePath
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "==> Exe portabile unico pronto: $SingleExePath" -ForegroundColor Green
-    }
-    else {
-        Write-Host "Packaging exe portabile saltato (vedi avviso sopra). La cartella $DestDir resta comunque utilizzabile." -ForegroundColor Yellow
-    }
 }
