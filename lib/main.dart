@@ -353,7 +353,13 @@ class _WhatsAppViewState extends State<WhatsAppView>
       )
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (_) => _progress.value = 0,
+          onPageStarted: (_) {
+            _progress.value = 0;
+            // A new document wipes any previously injected stylesheet, so the
+            // "already injected" guard in _applyChatListWidth must not skip
+            // the next re-injection even if the width value is unchanged.
+            _widthInjected = false;
+          },
           onProgress: (p) => _progress.value = p,
           onPageFinished: (_) {
             _progress.value = 100;
