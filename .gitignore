@@ -9,4 +9,5 @@
 /dist/
 /out/
 /release/
+/release_portable/
 *.AppImage
