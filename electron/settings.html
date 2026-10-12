@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impostazioni</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 24px; } h1 { margin-top: 0; font-size: 22px; }
+    .setting { display: flex; justify-content: space-between; gap: 20px; align-items: center; padding: 16px 0; border-bottom: 1px solid #8886; }
+    label { font-weight: 600; } small { display: block; margin-top: 4px; opacity: .75; }
+    input[type=range] { width: 180px; } button { margin-top: 22px; padding: 8px 18px; }
+    output { display: inline-block; min-width: 48px; text-align: right; }
+  </style>
+</head>
+<body>
+  <h1>Impostazioni</h1>
+  <section class="setting">
+    <div><label for="minimize">Minimizza nel vassoio alla chiusura</label><small>La finestra resta disponibile dall'icona nell'area di notifica.</small></div>
+    <input id="minimize" type="checkbox">
+  </section>
+  <section class="setting">
+    <div><label for="chat-width">Larghezza elenco chat</label><small>Modifica la colonna delle conversazioni di WhatsApp.</small></div>
+    <div><input id="chat-width" type="range" min="280" max="600" step="1"><output id="chat-width-value"></output></div>
+  </section>
+  <button id="reset">Usa larghezza predefinita</button>
+  <button id="close">Chiudi</button>
+  <script src="settings.js"></script>
+</body>
+</html>

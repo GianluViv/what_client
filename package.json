@@ -1,0 +1,49 @@
+{
+  "name": "what-client",
+  "version": "1.0.0",
+  "description": "Client desktop di WhatsApp Web basato su Electron",
+  "author": "GianluViv",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.teststudio.whatclient",
+    "productName": "WhatsApp",
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "assets/icons/app_icon.png",
+      "assets/icons/app_icon.ico",
+      "assets/icons/tray_icon.png",
+      "assets/icons/tray_icon.ico",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Network;InstantMessaging",
+      "icon": "assets/icons/app_icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "assets/icons/app_icon.ico"
+    }
+  },
+  "allowScripts": {
+    "electron@39.8.10": true
+  }
+}
