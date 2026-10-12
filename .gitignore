@@ -10,4 +10,5 @@
 /out/
 /release/
 /release_portable/
+/release_appimage/
 *.AppImage
