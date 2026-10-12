@@ -27,6 +27,8 @@
       "assets/icons/app_icon.ico",
       "assets/icons/tray_icon.png",
       "assets/icons/tray_icon.ico",
+      "assets/icons/tray_icon_unread.png",
+      "assets/icons/tray_icon_unread.ico",
       "package.json"
     ],
     "linux": {

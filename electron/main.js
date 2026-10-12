@@ -165,7 +165,12 @@ function updateTrayIcon() {
   if (!tray) return;
   const extension = process.platform === 'win32' ? 'ico' : 'png';
   const name = hasUnread ? `tray_icon_unread.${extension}` : `tray_icon.${extension}`;
-  tray.setImage(assetPath('assets', 'icons', name));
+  try {
+    tray.setImage(assetPath('assets', 'icons', name));
+  } catch (error) {
+    // A missing icon must never crash the main process or disconnect WhatsApp.
+    console.error(`Unable to update tray icon (${name}):`, error);
+  }
 }
 
 function openSettings() {
